@@ -1,0 +1,29 @@
+# secrets / local config
+.env
+*.local
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# node
+node_modules/
+dist/
+
+# evals
+evals/reports/
+
+# os / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# .NET
+bin/
+obj/
+TestResults/
