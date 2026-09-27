@@ -1,5 +1,7 @@
 # EstateAI
 
+[![CI](https://github.com/rupampandey1712/Real-State-Management-System/actions/workflows/ci.yml/badge.svg)](https://github.com/rupampandey1712/Real-State-Management-System/actions/workflows/ci.yml)
+
 A real-estate platform (India-first) with GenAI features, built as **microservices on Azure** and
 fully runnable on your machine with **Azure emulators**:
 

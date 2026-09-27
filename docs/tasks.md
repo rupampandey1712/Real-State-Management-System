@@ -28,7 +28,7 @@
   - Done when: ruff + mypy config at repo root, eslint for web, pre-commit hooks; all pass.
 - [ ] **T0.7 · OpenAPI → TS types** — Refs: ADR-0009 · Deps: T0.10 · Est: M
   - Done when: script pulls each service's `/openapi.json`, generates `web/src/lib/api-types.ts` (openapi-typescript); `lib/types.ts` replaced; CI fails on drift.
-- [ ] **T0.8 · CI pipeline** — Refs: design §10 · Deps: T0.6 · Est: M
+- [x] **T0.8 · CI pipeline** — `.github/workflows/ci.yml`: lint, Python tests (matrix), migrations up/down/up on real Postgres + pgvector, gateway tests, web build, API contract + generated-reference check, Docker image builds, end-to-end (compose + smoke test). Deploy workflow: see azure-deployment.md §5 (needs Azure first).
   - Done when: GitHub Actions matrix over `services/*` (ruff, mypy, pytest), web (typecheck, build, vitest), image builds, compose smoke test (`/health/deep`).
 - [ ] **T0.11 · Integration test harness** — Deps: T0.10 · Est: M
   - Done when: pytest fixtures spin up Postgres/Redis (testcontainers) per service; one API test per service (happy path + auth failure).

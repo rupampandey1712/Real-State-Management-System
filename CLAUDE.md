@@ -77,6 +77,8 @@ alembic revision --autogenerate -m "<change>" && alembic upgrade head
 cd web && npm install && npm run dev        # :5173, proxies /api → gateway :8080
 npm run typecheck && npm run build
 
+# CI (.github/workflows/ci.yml) runs all of the checks below on every push and pull request
+
 # End-to-end against the running stack (29 checks through the gateway)
 python scripts/smoke_test.py
 
