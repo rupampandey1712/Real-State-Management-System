@@ -1,0 +1,6 @@
+# Files run inside Linux containers: keep LF endings on every platform.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.webp binary
+*.pdf binary
