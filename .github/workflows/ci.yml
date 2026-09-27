@@ -1,0 +1,188 @@
+# Continuous integration for EstateAI. Runs on every push and pull request.
+# Jobs are independent so failures are easy to read; `e2e` is the slowest (full docker compose stack).
+
+name: CI
+
+on:
+  push:
+    branches: [main, "feat/**", "fix/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+  DOTNET_VERSION: "10.0.x"
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install "ruff>=0.6"
+      - run: ruff check services libs evals scripts --select E,F,B --ignore E501,B008
+
+  python-tests:
+    name: Tests (${{ matrix.path }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        path: [libs/common, services/identity, services/listing, services/ai]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            libs/common/requirements*.txt
+            services/*/requirements.txt
+      - name: Install dependencies
+        run: |
+          pip install -r libs/common/requirements.txt -r libs/common/requirements-dev.txt
+          if [ -f "${{ matrix.path }}/requirements.txt" ] && [ "${{ matrix.path }}" != "libs/common" ]; then
+            pip install -r "${{ matrix.path }}/requirements.txt"
+          fi
+      - name: pytest
+        working-directory: ${{ matrix.path }}
+        run: pytest -q
+
+  migrations:
+    name: Migrations (real Postgres + pgvector)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: estate
+          POSTGRES_PASSWORD: estate
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U estate" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      PGPASSWORD: estate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            libs/common/requirements*.txt
+            services/*/requirements.txt
+      - name: Install dependencies
+        run: |
+          pip install -r libs/common/requirements.txt
+          for svc in identity listing search ai; do pip install -r services/$svc/requirements.txt; done
+      - name: Create the four databases (same script as docker compose)
+        run: psql -h localhost -U estate -d postgres -f infra/local/postgres/init.sql
+      - name: Upgrade, downgrade and upgrade again
+        run: |
+          for svc in identity listing search ai; do
+            echo "::group::$svc"
+            cd services/$svc
+            export PYTHONPATH="../../libs/common:." DATABASE_URL="postgresql+asyncpg://estate:estate@localhost:5432/$svc"
+            alembic upgrade head
+            alembic downgrade base
+            alembic upgrade head
+            cd - > /dev/null
+            echo "::endgroup::"
+          done
+
+  gateway:
+    name: Gateway (YARP) tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - run: dotnet test services/gateway --configuration Release
+
+  web:
+    name: Web (type-check + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npm run build
+        working-directory: web
+
+  contract:
+    name: API contract (frontend ↔ gateway ↔ backend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Every endpoint has UI and a gateway route; every UI call has an endpoint
+        run: python scripts/check_api_sync.py
+      - name: Generated API reference is up to date
+        run: |
+          python scripts/gen_api_reference.py
+          git diff --exit-code docs/api-reference.md || {
+            echo "::error::docs/api-reference.md is stale. Run: python scripts/gen_api_reference.py"; exit 1; }
+
+  docker-images:
+    name: Docker images build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: docker compose build
+
+  e2e:
+    name: End-to-end (docker compose + smoke test)
+    runs-on: ubuntu-latest
+    needs: [python-tests, gateway, web, docker-images]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: cp .env.example .env
+      - name: Start the stack
+        run: docker compose up -d --build
+      - name: Wait for the Service Bus emulator
+        run: |
+          for _ in $(seq 1 60); do
+            if docker compose logs servicebus 2>&1 | grep -q "Successfully Up"; then echo "Service Bus ready"; exit 0; fi
+            sleep 5
+          done
+          echo "::error::Service Bus emulator did not start"; docker compose logs servicebus | tail -50; exit 1
+      - name: Wait for the gateway to see every service healthy
+        run: |
+          for _ in $(seq 1 60); do
+            if curl -sf http://localhost:8080/health/deep | grep -q '"status":"ok"'; then echo "All services healthy"; exit 0; fi
+            sleep 5
+          done
+          echo "::error::Services not healthy"; curl -s http://localhost:8080/health/deep; exit 1
+      - run: pip install httpx
+      - name: Smoke test (29 checks through the gateway)
+        run: python scripts/smoke_test.py
+      - name: Service logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail 200
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v

@@ -1,0 +1,9 @@
+# Build context for the Python services is the repo root: keep it small and platform-neutral.
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+**/bin/
+**/obj/
+web/dist
+.env
+.git

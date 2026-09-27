@@ -1,0 +1,158 @@
+# EstateAI — full local stack: Azure emulators + microservices + React web.
+# Usage:  cp .env.example .env   then   docker compose up -d --build
+# See docs/architecture.md §6 for ports and emulator ↔ Azure service mapping.
+
+x-python-service: &python-service
+  env_file: .env
+  restart: unless-stopped
+  # Dev: source is bind-mounted and uvicorn reloads on change. Images run without --reload in Azure.
+  command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app --reload-dir /libs/common
+  environment: &python-env
+    PYTHONPATH: /libs/common:/app
+    OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
+  depends_on: &python-deps
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+    servicebus: { condition: service_started }
+
+services:
+  # ───────────────────────── Azure emulators & backing services ─────────────────────────
+  azurite:                       # Azure Blob/Queue/Table Storage
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    command: azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --loose --skipApiVersionCheck --location /data
+    ports: ["10000:10000", "10001:10001", "10002:10002"]
+    volumes: [azurite-data:/data]
+
+  cosmos:                        # Azure Cosmos DB (NoSQL API) — Linux emulator (vNext)
+    image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview
+    ports: ["8081:8081", "1234:1234"]   # 1234 = Data Explorer UI
+
+  mssql:                         # SQL Server backing store required by the Service Bus emulator
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
+
+  servicebus:                    # Azure Service Bus emulator (topics/subscriptions from Config.json)
+    image: mcr.microsoft.com/azure-messaging/servicebus-emulator:latest
+    volumes:
+      - ./infra/local/servicebus/Config.json:/ServiceBus_Emulator/ConfigFiles/Config.json
+    ports: ["5672:5672"]
+    environment:
+      SQL_SERVER: mssql
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
+      ACCEPT_EULA: "Y"
+    depends_on: [mssql]
+
+  postgres:                      # Azure Database for PostgreSQL Flexible Server (pgvector enabled)
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: estate
+      POSTGRES_PASSWORD: estate
+    ports: ["5432:5432"]
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./infra/local/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U estate"]
+      interval: 5s
+      retries: 20
+
+  redis:                         # Azure Managed Redis
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+
+  mailpit:                       # Azure Communication Services Email (SMTP sink + UI)
+    image: axllent/mailpit:latest
+    ports: ["8025:8025", "1025:1025"]
+
+  aspire-dashboard:              # Azure Monitor / Application Insights (OTLP traces, logs, metrics UI)
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:latest
+    ports: ["18888:18888"]
+    environment:
+      DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
+
+  # ───────────────────────────────────── Microservices ─────────────────────────────────────
+  gateway:                       # YARP on .NET 10 (ADR-0014)
+    build: { context: ./services/gateway }
+    restart: unless-stopped
+    ports: ["8080:8080"]
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Redis__ConnectionString: redis:6379,abortConnect=false
+      Jwt__RequireHttpsMetadata: "false"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire-dashboard:18889
+    depends_on:
+      redis: { condition: service_healthy }
+      identity: { condition: service_started }
+
+  identity:
+    <<: *python-service
+    build: { context: ., dockerfile: services/identity/Dockerfile }
+    environment: { <<: *python-env, SERVICE_NAME: identity }
+    ports: ["8001:8000"]
+    volumes: ["./services/identity/app:/app/app", "./services/identity/migrations:/app/migrations", "./libs/common:/libs/common"]
+    # Migrations run before the server starts. In Azure they run once as a Container Apps job.
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app --reload-dir /libs/common"
+
+  listing:
+    <<: *python-service
+    build: { context: ., dockerfile: services/listing/Dockerfile }
+    environment: { <<: *python-env, SERVICE_NAME: listing }
+    ports: ["8002:8000"]
+    volumes: ["./services/listing/app:/app/app", "./services/listing/migrations:/app/migrations", "./libs/common:/libs/common"]
+    # Migrations run before the server starts. In Azure they run once as a Container Apps job.
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app --reload-dir /libs/common"
+    depends_on: { <<: *python-deps, azurite: { condition: service_started } }
+
+  search:
+    <<: *python-service
+    build: { context: ., dockerfile: services/search/Dockerfile }
+    environment: { <<: *python-env, SERVICE_NAME: search }
+    ports: ["8003:8000"]
+    volumes: ["./services/search/app:/app/app", "./services/search/migrations:/app/migrations", "./libs/common:/libs/common"]
+    # Migrations run before the server starts. In Azure they run once as a Container Apps job.
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app --reload-dir /libs/common"
+
+  ai:
+    <<: *python-service
+    build: { context: ., dockerfile: services/ai/Dockerfile }
+    environment: { <<: *python-env, SERVICE_NAME: ai }
+    ports: ["8004:8000"]
+    volumes: ["./services/ai/app:/app/app", "./services/ai/migrations:/app/migrations", "./libs/common:/libs/common"]
+    # Migrations run before the server starts. In Azure they run once as a Container Apps job.
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app --reload-dir /libs/common"
+    depends_on:
+      <<: *python-deps
+      azurite: { condition: service_started }
+      cosmos: { condition: service_started }
+
+  engagement:
+    <<: *python-service
+    build: { context: ., dockerfile: services/engagement/Dockerfile }
+    ports: ["8005:8000"]
+    environment: { <<: *python-env, SERVICE_NAME: engagement }
+    volumes: ["./services/engagement/app:/app/app", "./libs/common:/libs/common"]
+    depends_on: { <<: *python-deps, cosmos: { condition: service_started } }
+
+  notification:
+    <<: *python-service
+    build: { context: ., dockerfile: services/notification/Dockerfile }
+    environment: { <<: *python-env, SERVICE_NAME: notification }
+    volumes: ["./services/notification/app:/app/app", "./libs/common:/libs/common"]
+    command: python -m app.main
+
+  # ─────────────────────────────────────── Frontend ───────────────────────────────────────
+  web:
+    build: { context: ./web }
+    ports: ["3000:80"]
+    depends_on: [gateway]
+
+volumes:
+  azurite-data:
+  pg-data:

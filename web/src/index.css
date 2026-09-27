@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+/* EstateAI tokens — limewash walls, indigo ink, a thread of haldi.
+   Haldi is reserved for two things: "what we understood" and keyboard focus. */
+@theme {
+  --color-wash: #f4f5f1;
+  --color-paper: #ffffff;
+  --color-ink: #1c2757;
+  --color-ink-soft: #33407a;
+  --color-slate: #5b6479;
+  --color-rule: #dcdfd8;
+  --color-haldi: #e9a31b;
+  --color-haldi-wash: #fbefd3;
+  --color-leaf: #2f6f5e;
+  --color-danger: #b42318;
+
+  /* City tints for photo-less listings (encodes the city, not decoration) */
+  --color-city-pune: #e4e8f4;
+  --color-city-bengaluru: #dfece6;
+  --color-city-mumbai: #f5e9d2;
+
+  --font-sans: "Mukta", ui-sans-serif, system-ui, sans-serif;
+
+  /* Type scale ≈ 1.25 */
+  --text-display: 3rem;
+  --text-display--line-height: 1.05;
+  --text-title: 2.25rem;
+  --text-title--line-height: 1.1;
+}
+
+body {
+  background: var(--color-wash);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 1.0625rem;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-haldi);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: var(--color-haldi-wash);
+}
+
+@layer components {
+  .field {
+    @apply w-full rounded-md border border-rule bg-paper px-3 py-2 text-ink placeholder:text-slate/60;
+    @apply focus:border-ink focus:outline-none;
+  }
+  .field-label {
+    @apply block text-sm font-medium text-slate;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-md bg-ink px-5 py-2.5 font-semibold text-paper;
+    @apply hover:bg-ink-soft disabled:opacity-50;
+  }
+  .btn-quiet {
+    @apply inline-flex items-center justify-center rounded-md border border-rule bg-paper px-4 py-2 font-medium text-ink;
+    @apply hover:border-ink disabled:opacity-50;
+  }
+  .link {
+    @apply font-medium text-ink underline decoration-rule decoration-2 underline-offset-4 hover:decoration-ink;
+  }
+  /* A token the AI understood — underlined in haldi, removable */
+  .understood {
+    @apply rounded-sm font-semibold text-ink underline decoration-haldi decoration-[3px] underline-offset-[6px];
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes caret {
+  50% { opacity: 0; }
+}
+.streaming-caret::after {
+  content: "";
+  display: inline-block;
+  width: 0.5ch;
+  height: 1.1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--color-haldi);
+  animation: caret 1s steps(1) infinite;
+}
