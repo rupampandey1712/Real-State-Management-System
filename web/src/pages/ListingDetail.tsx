@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { lazy, Suspense, useRef, useState, type FormEvent } from "react";
-import { Link, useParams } from "react-router-dom";
+import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from "react";
+import { Link, useLocation, useParams } from "react-router-dom";
 
 import FavouriteButton from "../components/FavouriteButton";
 import { PhotoPlaceholder } from "../components/ListingCard";
 import QAPanel from "../components/QAPanel";
+import { track, type SearchMode } from "../lib/analytics";
 import { api, newIdempotencyKey, post } from "../lib/api";
 import { useAIFeatures } from "../lib/features";
 import type { Listing } from "../lib/types";
@@ -74,7 +75,7 @@ function Gallery({ listing }: { listing: Listing }) {
   );
 }
 
-function EnquiryForm({ listingId, prefill }: { listingId: string; prefill: string }) {
+function EnquiryForm({ listingId, prefill, qaUsed }: { listingId: string; prefill: string; qaUsed: boolean }) {
   const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   // One key per form: a double submit or retry sends the same key, so only one enquiry is created.
   const idempotencyKey = useRef(newIdempotencyKey());
@@ -88,6 +89,7 @@ function EnquiryForm({ listingId, prefill }: { listingId: string; prefill: strin
         message: form.get("message"), source: prefill ? "qa_unknown" : "listing_page", consent: form.get("consent") === "on",
       }, { idempotencyKey: idempotencyKey.current });
       setState("sent");
+      track({ type: "enquiry_sent", after_qa: qaUsed });
     } catch {
       setState("error");
     }
@@ -127,8 +129,14 @@ export default function ListingDetail() {
   const { id = "" } = useParams();
   const [prefill, setPrefill] = useState("");
   const [highlight, setHighlight] = useState<string | null>(null);
+  const [qaUsed, setQaUsed] = useState(false);
   const features = useAIFeatures();
+  const fromSearch = (useLocation().state as { fromSearch?: SearchMode } | null)?.fromSearch;
   const { data: listing, isLoading, error } = useQuery({ queryKey: ["listing", id], queryFn: () => api<Listing>(`/listings/${id}`) });
+
+  useEffect(() => {
+    if (listing) track({ type: "listing_viewed", from_search: !!fromSearch, ...(fromSearch && { mode: fromSearch }) });
+  }, [listing?.id]); // only when the search or listing changes
 
   if (isLoading) return <p className="text-xl text-slate">Loading this home…</p>;
   if (error || !listing) {
@@ -204,8 +212,8 @@ export default function ListingDetail() {
         </div>
 
         <aside className="space-y-5 lg:sticky lg:top-6 lg:self-start">
-          {features.listing_qa && <QAPanel listingId={listing.id} onAskAgent={askAgent} onShowFact={showFact} />}
-          <EnquiryForm listingId={listing.id} prefill={prefill} />
+          {features.listing_qa && <QAPanel listingId={listing.id} onAskAgent={askAgent} onShowFact={showFact} onFirstQuestion={() => setQaUsed(true)} />}
+          <EnquiryForm listingId={listing.id} prefill={prefill} qaUsed={qaUsed} />
         </aside>
       </div>
     </article>

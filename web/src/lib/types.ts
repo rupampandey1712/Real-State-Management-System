@@ -120,6 +120,7 @@ export interface Listing {
   rera_id: string | null;
   images: ListingImage[];
   published_at: string | null;
+  created_at: string;
   updated_at: string;
 }
 

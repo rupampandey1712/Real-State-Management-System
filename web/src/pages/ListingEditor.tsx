@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import DescriptionGenerator from "../components/DescriptionGenerator";
 import ImproveText from "../components/ImproveText";
 import PhotoManager from "../components/PhotoManager";
+import { editRatio, track } from "../lib/analytics";
 import { ApiError, api, del, download, newIdempotencyKey, patch, post } from "../lib/api";
 import { useAIFeatures } from "../lib/features";
 import type { Listing, ListingDocument } from "../lib/types";
@@ -94,6 +95,7 @@ export default function ListingEditor() {
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const createKey = useRef(newIdempotencyKey()); // a double-clicked "Save draft" creates one listing, not two
+  const aiDraft = useRef<string | null>(null); // the AI text the agent accepted, to measure how much they edited it
   const documents = useQuery({
     queryKey: ["documents", id],
     queryFn: () => api<ListingDocument[]>(`/listings/${id}/documents`),
@@ -157,6 +159,10 @@ export default function ListingEditor() {
         ? await patch<Listing>(`/listings/${id}`, toPayload(form))
         : await post<Listing>("/listings", toPayload(form), { idempotencyKey: createKey.current });
       await queryClient.invalidateQueries({ queryKey: ["listing", listing.id] });
+      if (aiDraft.current !== null && form.description_ai) {
+        track({ type: "description_saved", edit_ratio: editRatio(aiDraft.current, String(form.description ?? "")) });
+        aiDraft.current = null; // one measurement per accepted draft
+      }
       setNotice("Saved.");
       if (!id) navigate(`/agent/listings/${listing.id}/edit`, { replace: true });
       return listing;
@@ -181,7 +187,11 @@ export default function ListingEditor() {
   const publish = async () => {
     if (!id || !(await save())) return;
     try {
+      const firstPublish = !existing.data?.published_at;
       await post(`/listings/${id}/publish`);
+      if (firstPublish && existing.data) {
+        track({ type: "listing_published", minutes_to_publish: Math.round((Date.now() - Date.parse(existing.data.created_at)) / 600) / 100 });
+      }
       navigate(`/listings/${id}`);
     } catch (e) {
       showErrors(e);
@@ -365,12 +375,14 @@ export default function ListingEditor() {
               {features.ai_describe && (
                 <DescriptionGenerator listingId={id} onAccept={({ title, description }) => {
                   setForm((f) => ({ ...f, title, description, description_ai: true }));
+                  aiDraft.current = description;
                   setNotice("Draft added to the form. Review it, then save.");
                 }} />
               )}
               {features.ai_improve && (
                 <ImproveText listingId={id} text={String(form.description ?? "")} onAccept={(description) => {
                   setForm((f) => ({ ...f, description, description_ai: true }));
+                  aiDraft.current = description;
                   setNotice("Rewrite added to the form. Review it, then save.");
                 }} />
               )}

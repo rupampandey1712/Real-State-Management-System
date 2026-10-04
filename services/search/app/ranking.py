@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from sqlalchemy import Select, func, literal, select
+from sqlalchemy.orm import load_only
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -30,6 +31,16 @@ class Filters:
     amenities: list[str] = field(default_factory=list)
     near: Sequence[str] = field(default_factory=list)  # soft: ranks, never filters (docs/design.md §4.3)
     bbox: tuple[float, float, float, float] | None = None  # minLng, minLat, maxLng, maxLat (FR-2.3)
+
+
+# Columns a result card and the scorer need. The 768-dim embedding and the description are never loaded:
+# parsing 200 vectors per query costs more than the query itself (docs/perf/phase1.md).
+RESULT_COLUMNS = load_only(
+    SearchListing.id, SearchListing.title, SearchListing.listing_type, SearchListing.property_type,
+    SearchListing.price_minor, SearchListing.currency, SearchListing.bedrooms, SearchListing.bathrooms,
+    SearchListing.carpet_area_sqft, SearchListing.locality, SearchListing.city, SearchListing.lat, SearchListing.lng,
+    SearchListing.thumbnail_key, SearchListing.published_at,
+)
 
 
 def parse_bbox(value: str | None) -> tuple[float, float, float, float] | None:
@@ -102,7 +113,7 @@ async def hybrid_search(
 ) -> tuple[list[tuple[SearchListing, float, list[str]]], bool]:
     """Returns (rows with score + reasons, has_more). `sort` other than relevance re-orders the same
     ranked candidate set, so switching sort never changes which homes match."""
-    stmt = apply_filters(select(SearchListing), f, tolerant_price=True)
+    stmt = apply_filters(select(SearchListing).options(RESULT_COLUMNS), f, tolerant_price=True)
     semantic = None
     if query_vector is not None:
         semantic = (1 - SearchListing.embedding.cosine_distance(query_vector)).label("semantic")

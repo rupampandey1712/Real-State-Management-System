@@ -15,14 +15,16 @@ import structlog
 from azure.cosmos.exceptions import CosmosResourceNotFoundError
 from typing import Literal
 
+from fastapi import Query
 from pydantic import BaseModel, EmailStr, Field
 
 from app.config import settings
 from app.privacy import erase_user, purge_old_enquiries
+from app.product_metrics import ProductEvent, rollup
 from app.store import store
 from estate_common import events
 from estate_common.app import create_app, redis_check
-from estate_common.auth import Agent, OptionalUser, User
+from estate_common.auth import Admin, Agent, OptionalUser, User
 from estate_common.errors import DependencyUnavailable, NotFound, ValidationFailed
 from estate_common.http import ResilientClient
 from estate_common.idempotency import IdempotencyMiddleware
@@ -231,3 +233,24 @@ async def delete_saved_search(search_id: str, user: User) -> None:
         await store["saved-searches"].delete_item(item=search_id, partition_key=user.id)
     except CosmosResourceNotFoundError:
         pass
+
+
+# ─────────────────────────────── success metrics (requirements §9) ───────────────────────────────
+@app.post("/api/v1/events", status_code=204)
+async def record_event(event: ProductEvent) -> None:
+    """Anonymous product event (no user id, no PII). Losing one is harmless, so failures are only logged."""
+    day = datetime.now(UTC).date().isoformat()
+    try:
+        await store["product-events"].create_item({"id": uuid.uuid4().hex, "day": day, **event.model_dump(exclude_none=True)})
+    except Exception:
+        log.warning("product_event_dropped", type=event.type)
+
+
+@app.get("/api/v1/admin/product-metrics")
+async def product_metrics(_admin: Admin, days: int = Query(60, ge=1, le=90)) -> dict:
+    """Success metrics over the last `days` days (requirements §9 measures them 60 days after launch)."""
+    since = (datetime.now(UTC) - timedelta(days=days - 1)).date().isoformat()
+    events = [e async for e in store["product-events"].query_items(
+        query="SELECT c.type, c.mode, c.from_search, c.minutes_to_publish, c.edit_ratio, c.after_qa FROM c WHERE c.day >= @since",
+        parameters=[{"name": "@since", "value": since}])]
+    return {"days": days, **rollup(events)}

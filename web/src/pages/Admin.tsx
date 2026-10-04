@@ -7,9 +7,10 @@ import { api, post } from "../lib/api";
 import type { AdminUser, AuditEntry, User } from "../lib/types";
 
 const AIDashboard = lazy(() => import("../components/admin/AIDashboard"));
+const SuccessMetrics = lazy(() => import("../components/admin/SuccessMetrics"));
 
 type Role = User["role"];
-const TABS = [["people", "People"], ["listings", "Listings"], ["ai", "AI"]] as const;
+const TABS = [["people", "People"], ["listings", "Listings"], ["ai", "AI"], ["metrics", "Success metrics"]] as const;
 
 function History({ userId }: { userId: string }) {
   const { data } = useQuery({ queryKey: ["admin-user-actions", userId], queryFn: () => api<AuditEntry[]>(`/admin/users/${userId}/actions`) });
@@ -180,6 +181,7 @@ export default function Admin() {
         {tab === "people" && <People />}
         {tab === "listings" && <Moderation />}
         {tab === "ai" && <Suspense fallback={<p className="text-slate">Loading…</p>}><AIDashboard /></Suspense>}
+        {tab === "metrics" && <Suspense fallback={<p className="text-slate">Loading…</p>}><SuccessMetrics /></Suspense>}
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useRef, useState, type FormEvent } from "react";
 
 import { api, post } from "../lib/api";
+import { track } from "../lib/analytics";
 import { postSSE } from "../lib/sse";
 import type { Citation } from "../lib/types";
 
@@ -74,8 +75,8 @@ function Rating({ turn, onRate, onComment }: {
   );
 }
 
-export default function QAPanel({ listingId, onAskAgent, onShowFact }: {
-  listingId: string; onAskAgent: (question: string) => void; onShowFact: (label: string) => void;
+export default function QAPanel({ listingId, onAskAgent, onShowFact, onFirstQuestion }: {
+  listingId: string; onAskAgent: (question: string) => void; onShowFact: (label: string) => void; onFirstQuestion?: () => void;
 }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
@@ -91,6 +92,10 @@ export default function QAPanel({ listingId, onAskAgent, onShowFact }: {
 
   const ask = async (question: string) => {
     if (!question.trim() || busy) return;
+    if (turns.length === 0) {
+      track({ type: "qa_session" });
+      onFirstQuestion?.();
+    }
     const history = turns.flatMap((t) => [
       { role: "user", content: t.question },
       { role: "assistant", content: t.answer },

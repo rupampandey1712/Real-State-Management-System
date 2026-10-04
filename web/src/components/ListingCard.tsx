@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 
+import type { SearchMode } from "../lib/analytics";
 import type { SearchItem } from "../lib/types";
 import FavouriteButton from "./FavouriteButton";
 
@@ -19,10 +20,11 @@ export function PhotoPlaceholder({ locality, city, bedrooms, large = false }: { 
   );
 }
 
-export default function ListingCard({ item }: { item: SearchItem }) {
+/** `searchMode` is set on results pages so the listing page can count a search → view click-through. */
+export default function ListingCard({ item, searchMode }: { item: SearchItem; searchMode?: SearchMode }) {
   return (
     <div className="relative">
-    <Link to={`/listings/${item.id}`} className="group block rounded-md">
+    <Link to={`/listings/${item.id}`} state={searchMode ? { fromSearch: searchMode } : undefined} className="group block rounded-md">
       <div className="aspect-[4/3] overflow-hidden rounded-md">
         {item.thumbnail_url ? (
           <img src={item.thumbnail_url} alt="" loading="lazy" className="h-full w-full object-cover" />

@@ -151,6 +151,7 @@ public sealed class GatewayTests(GatewayFixture fx) : IClassFixture<GatewayFixtu
     [InlineData("/api/v1/admin/users/abc/suspend")]
     [InlineData("/api/v1/admin/listings/abc/takedown")]
     [InlineData("/api/v1/admin/ai/flags")]
+    [InlineData("/api/v1/admin/product-metrics")]
     public async Task Admin_routes_exist_and_require_admin(string path)
     {
         var r = await Client(fx.Token("agent")).PostAsync(path, new StringContent("{}"));
@@ -164,6 +165,13 @@ public sealed class GatewayTests(GatewayFixture fx) : IClassFixture<GatewayFixtu
     {
         var r = await Client(fx.Token("buyer")).SendAsync(new HttpRequestMessage(new HttpMethod(method), path) { Content = new StringContent("{}") });
         Assert.Equal(HttpStatusCode.Forbidden, r.StatusCode);
+    }
+
+    [Fact]
+    public async Task Product_events_are_anonymous_and_routed_to_engagement()
+    {
+        var r = await Client().PostAsync("/api/v1/events", new StringContent("{}"));
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, r.StatusCode); // no auth needed; engagement is down in tests
     }
 
     [Fact]

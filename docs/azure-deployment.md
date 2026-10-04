@@ -71,6 +71,39 @@ These are required or strongly recommended; each is small. Items marked **requir
 | 12 | Recommended: outbox cleanup job (T4.15) | `outbox` grows forever | Container Apps scheduled job: `DELETE FROM outbox WHERE published_at < now() - interval '7 days'` |
 | 13 | Gemini: paid-tier key in Key Vault, outbound HTTPS allowed | Free tier data terms; NSG/firewall egress | `GEMINI_API_KEY` secret; egress to `generativelanguage.googleapis.com` |
 
+## 4a. Infrastructure as code (Bicep) — the recommended path
+
+Everything in §2 and §4 is declared in `infra/azure/` (T4.12). `main.bicep` wires the modules:
+
+| Module | Creates |
+|---|---|
+| `modules/data.bicep` | PostgreSQL Flexible 16 (pgvector allow-listed, 4 databases, 14-day backups) · Cosmos DB serverless + `estateai` database · Service Bus Standard with all four topics and their subscriptions (mirrors `Config.json`, production TTL `P14D`, duplicate window `PT10M`) · Storage (ZRS, private `listing-media`, soft delete) · Azure Cache for Redis (TLS only) |
+| `modules/security.bicep` | Container Registry · one user-assigned identity for the apps · Key Vault (RBAC, purge protection) with every secret the services read · role assignments (Key Vault Secrets User, AcrPull, Blob Data Contributor, Service Bus Data Owner) |
+| `modules/apps.bicep` | Container Apps environment · identity, listing, search, ai, engagement (internal ingress, ≥ 1 replica, liveness/readiness probes) · gateway (external, ≥ 2 replicas) · notification (KEDA Service Bus scaler, 0–3) · `migrate-*` jobs |
+| `modules/edge.bicep` | Static Web App · Front Door Standard with `/api/*` → gateway and `/*` → SPA on one domain |
+| `modules/monitoring.bicep` | NFR-1 uptime: availability tests for the site and `/api/health/deep` from 5 regions every 5 min; alerts (site/API down, 24 h availability < 99.5 %, 5xx count, response time > 300 ms) to an on-call email group. Playbooks: [runbook.md](runbook.md) §6–6c |
+
+```bash
+az group create -n rg-estateai-prod -l centralindia
+export POSTGRES_ADMIN_PASSWORD='<from a password manager>' GEMINI_API_KEY='<paid-tier key>' ALERT_EMAIL=oncall@estateai.in
+
+# 1st run: data, registry, vault, workspace — no apps yet (their images don't exist)
+DEPLOY_APPS=false az deployment group create -g rg-estateai-prod -f infra/azure/main.bicep -p infra/azure/main.prod.bicepparam
+# push images (§4 step 2) with a tag, then deploy everything
+IMAGE_TAG=1.0.0 az deployment group create -g rg-estateai-prod -f infra/azure/main.bicep -p infra/azure/main.prod.bicepparam
+for s in identity listing search ai; do az containerapp job start -g rg-estateai-prod -n migrate-$s; done
+
+az bicep build --file infra/azure/main.bicep          # compile check (CI runs this)
+az deployment group what-if -g rg-estateai-prod -f infra/azure/main.bicep -p infra/azure/main.prod.bicepparam
+```
+
+Still manual or deliberately left out of the templates: the custom domain + certificate on Front Door, the ACS
+Email domain (§3 #5), VNet integration and private endpoints (§6 — the templates use public endpoints with
+Azure-services-only firewall rules so a first environment can come up quickly), Key Vault signing keys (T4.14),
+and the managed-identity switch for Storage/Service Bus/Cosmos (§3 #8 — the role assignments already exist).
+Telemetry: services export OTLP; enable the Container Apps managed OpenTelemetry agent with App Insights as the
+destination (environment → Monitoring → OpenTelemetry) until it is added to `apps.bicep`.
+
 ## 4. Step-by-step (Azure CLI)
 
 Prerequisites: Azure CLI ≥ 2.60 with `containerapp` extension (`az extension add -n containerapp`), Owner or
@@ -117,7 +150,7 @@ az cosmosdb create -g $RG -n $COSMOS --capabilities EnableServerless --default-c
 az cosmosdb sql database create -g $RG -a $COSMOS -n estateai           # containers are created by the services
 
 az servicebus namespace create -g $RG -n $SB -l $LOC --sku Standard
-for topic in listing-events ai-events engagement-events; do
+for topic in listing-events ai-events engagement-events identity-events; do
   az servicebus topic create -g $RG --namespace-name $SB -n $topic \
     --default-message-time-to-live P14D --enable-duplicate-detection true --duplicate-detection-history-time-window PT10M
 done
@@ -125,6 +158,9 @@ az servicebus topic subscription create -g $RG --namespace-name $SB --topic-name
 az servicebus topic subscription create -g $RG --namespace-name $SB --topic-name listing-events -n ai --max-delivery-count 3 --lock-duration PT5M --dead-letter-on-message-expiration true
 az servicebus topic subscription create -g $RG --namespace-name $SB --topic-name ai-events -n listing --max-delivery-count 5 --lock-duration PT1M --dead-letter-on-message-expiration true
 az servicebus topic subscription create -g $RG --namespace-name $SB --topic-name engagement-events -n notification --max-delivery-count 5 --lock-duration PT1M --dead-letter-on-message-expiration true
+for sub in listing engagement ai; do
+  az servicebus topic subscription create -g $RG --namespace-name $SB --topic-name identity-events -n $sub --max-delivery-count 5 --lock-duration PT1M --dead-letter-on-message-expiration true
+done
 
 az storage account create -g $RG -n $ST -l $LOC --sku Standard_ZRS --kind StorageV2 --allow-blob-public-access false --min-tls-version TLS1_2
 az storage container create --account-name $ST -n listing-media --auth-mode login

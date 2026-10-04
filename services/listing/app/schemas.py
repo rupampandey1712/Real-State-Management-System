@@ -160,6 +160,7 @@ class ListingOut(BaseModel):
     rera_id: str | None
     images: list[ImageOut]
     published_at: datetime | None
+    created_at: datetime
     updated_at: datetime
 
 

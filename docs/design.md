@@ -583,7 +583,9 @@ All handlers are idempotent (keyed by aggregate id). Re-index everything by re-p
 - **Traces:** OpenTelemetry (FastAPI + SQLAlchemy + httpx instrumentation); LLM call = span with
   attributes `ai.model, ai.prompt_version, ai.input_tokens, ai.output_tokens`.
 - **Metrics:** request rate/latency/errors per route; AI metrics from the Cosmos `ai-requests` container (tokens, cost, latency, status, feedback).
-- **Dashboards:** API health; Search funnel; AI (volume, p50/p95 latency, cost/day, fallback rate, 👍 ratio).
+- **Dashboards:** API health; Search funnel; AI (volume, p50/p95 latency, cost/day, fallback rate, 👍 ratio) — Admin → AI;
+  success metrics (requirements §9) — Admin → Success metrics, from anonymous product events (`engagement/app/product_metrics.py`).
+- **Uptime (NFR-1):** App Insights availability tests + alerts, defined in `infra/azure/modules/monitoring.bicep`.
 - **Alerts:**
   | Alert | Condition | Severity |
   |---|---|---|

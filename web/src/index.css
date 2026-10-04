@@ -92,3 +92,9 @@ body {
   background: var(--color-haldi);
   animation: caret 1s steps(1) infinite;
 }
+
+/* Map price pins (MapView): the hovered or focused pin sits above its neighbours in dense localities. */
+.maplibregl-marker:hover,
+.maplibregl-marker:focus-visible {
+  z-index: 10;
+}

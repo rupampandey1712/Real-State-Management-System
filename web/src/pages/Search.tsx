@@ -1,11 +1,12 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { lazy, Suspense, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import FilterChips, { filtersToParams, formatInr } from "../components/FilterChips";
 import FilterPanel from "../components/FilterPanel";
 import ListingCard from "../components/ListingCard";
 import NLSearchBox from "../components/NLSearchBox";
+import { track, type SearchMode } from "../lib/analytics";
 import { api, newIdempotencyKey, post } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import type { SearchResponse } from "../lib/types";
@@ -95,6 +96,12 @@ export default function Search() {
   const first = query.data?.pages[0];
   const items = query.data?.pages.flatMap((p) => p.items) ?? [];
   const fallback = first?.meta.mode === "fallback";
+  const mode: SearchMode = (first?.meta.mode as SearchMode | undefined) ?? (q ? "ai" : "classic");
+
+  // Success metrics: one event per distinct search (not per "Show more" page or view toggle).
+  useEffect(() => {
+    if (first?.is_property_query) track({ type: "search_performed", mode });
+  }, [searchKey, first?.is_property_query]); // only when the search or listing changes
 
   const update = (changes: Record<string, string | null>) => {
     const next = new URLSearchParams(params);
@@ -182,13 +189,13 @@ export default function Search() {
 
       {view === "map" && first?.is_property_query && (
         <Suspense fallback={<div className="h-[28rem] animate-pulse rounded-lg bg-rule/50" aria-label="Loading map" />}>
-          <MapView items={items} bbox={bbox} city={params.get("city") ?? first?.interpreted_filters?.city ?? null}
+          <MapView items={items} bbox={bbox} searchMode={mode} city={params.get("city") ?? first?.interpreted_filters?.city ?? null}
             onSearchArea={(box) => update({ bbox: box, cursor: null })} />
         </Suspense>
       )}
 
       <div className="grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
-        {items.map((item) => <ListingCard key={item.id} item={item} />)}
+        {items.map((item) => <ListingCard key={item.id} item={item} searchMode={mode} />)}
       </div>
 
       {query.hasNextPage && (

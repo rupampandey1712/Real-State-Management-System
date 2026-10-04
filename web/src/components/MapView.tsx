@@ -4,6 +4,7 @@ import maplibregl, { type LngLatBoundsLike } from "maplibre-gl";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import type { SearchMode } from "../lib/analytics";
 import type { SearchItem } from "../lib/types";
 
 // OpenFreeMap: free OpenStreetMap vector tiles, no API key and no usage limits (docs/decisions/0018).
@@ -26,11 +27,12 @@ interface Props {
   bbox: string | null;
   city: string | null;
   onSearchArea: (bbox: string) => void;
+  searchMode?: SearchMode;
 }
 
 /** Results on a map (FR-2.3). The list stays the primary, keyboard-first view (NFR-6); each pin is a
  *  focusable button that opens its listing. "Search this area" re-runs the search inside the visible box. */
-export default function MapView({ items, bbox, city, onSearchArea }: Props) {
+export default function MapView({ items, bbox, city, onSearchArea, searchMode }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const markers = useRef<maplibregl.Marker[]>([]);
@@ -73,7 +75,7 @@ export default function MapView({ items, bbox, city, onSearchArea }: Props) {
       button.className = "rounded-full border-2 border-paper bg-ink px-2 py-0.5 text-sm font-bold text-paper shadow hover:bg-ink-soft focus-visible:outline-haldi";
       button.textContent = item.price.display.replace("₹", "₹ ");
       button.setAttribute("aria-label", `${item.bedrooms} BHK in ${item.locality}, ${item.price.display}. Open listing`);
-      button.addEventListener("click", () => navigate(`/listings/${item.id}`));
+      button.addEventListener("click", () => navigate(`/listings/${item.id}`, { state: searchMode ? { fromSearch: searchMode } : undefined }));
       return new maplibregl.Marker({ element: button }).setLngLat([item.lng!, item.lat!]).addTo(instance);
     });
     if (!bbox && pinned.length > 0) {
@@ -84,7 +86,7 @@ export default function MapView({ items, bbox, city, onSearchArea }: Props) {
       instance.fitBounds(INDIA, { duration: 0 });
     }
     setMoved(false);
-  }, [items, bbox, city, navigate]);
+  }, [items, bbox, city, navigate, searchMode]);
 
   const unpinned = items.filter((i) => i.lat === null || i.lng === null).length;
 

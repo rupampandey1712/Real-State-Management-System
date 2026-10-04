@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai_client import AIClient
 from app.config import settings
 from app.models import SearchListing, embedding_text
-from app.ranking import Filters, apply_filters, hybrid_search, parse_bbox
+from app.ranking import RESULT_COLUMNS, Filters, apply_filters, hybrid_search, parse_bbox
 from estate_common import events
 from estate_common.app import create_app, postgres_check, redis_check
 from estate_common.cache import TwoLevelCache
@@ -198,7 +198,8 @@ async def classic_search(
             "price_asc": SearchListing.price_minor.asc(),
             "price_desc": SearchListing.price_minor.desc(),
         }.get(sort, SearchListing.published_at.desc())
-        stmt = apply_filters(select(SearchListing), f).order_by(order, SearchListing.id).offset(offset).limit(limit + 1)
+        stmt = (apply_filters(select(SearchListing).options(RESULT_COLUMNS), f)
+                .order_by(order, SearchListing.id).offset(offset).limit(limit + 1))
         rows = list(await session.scalars(stmt))
         return SearchResponse(
             items=[_item(r, 0.0, []) for r in rows[:limit]],
