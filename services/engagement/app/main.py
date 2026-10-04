@@ -13,9 +13,12 @@ from datetime import UTC, datetime, timedelta
 import redis.asyncio as redis
 import structlog
 from azure.cosmos.exceptions import CosmosResourceNotFoundError
+from typing import Literal
+
 from pydantic import BaseModel, EmailStr, Field
 
 from app.config import settings
+from app.privacy import erase_user, purge_old_enquiries
 from app.store import store
 from estate_common import events
 from estate_common.app import create_app, redis_check
@@ -23,7 +26,8 @@ from estate_common.auth import Agent, OptionalUser, User
 from estate_common.errors import DependencyUnavailable, NotFound, ValidationFailed
 from estate_common.http import ResilientClient
 from estate_common.idempotency import IdempotencyMiddleware
-from estate_common.messaging import EventPublisher
+from estate_common.events import Event
+from estate_common.messaging import EventPublisher, consume_forever
 
 log = structlog.get_logger(__name__)
 publisher = EventPublisher(settings.servicebus_connection, source="engagement")
@@ -41,9 +45,15 @@ async def lifespan(_app):
         except Exception:
             log.warning("cosmos_not_ready_retrying", attempt=attempt)
             await asyncio.sleep(5)
-    relay = asyncio.create_task(relay_unpublished_enquiries())
+    tasks = [
+        asyncio.create_task(relay_unpublished_enquiries()),
+        asyncio.create_task(retention_forever()),
+        asyncio.create_task(consume_forever(settings.servicebus_connection, events.IDENTITY_EVENTS, "engagement",
+                                            on_identity_event, handled_types={events.USER_DELETED})),
+    ]
     yield
-    relay.cancel()
+    for task in tasks:
+        task.cancel()
     await store.close()
     await listing_http.aclose()
 
@@ -104,6 +114,23 @@ async def relay_unpublished_enquiries() -> None:
             log.exception("enquiry_relay_error")
 
 
+async def on_identity_event(event: Event) -> None:
+    counts = await erase_user(store, event.data["user_id"])
+    log.info("user_data_erased", **counts)
+
+
+async def retention_forever() -> None:
+    while True:
+        try:
+            if purged := await purge_old_enquiries(store):
+                log.info("old_enquiries_purged", count=purged)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("enquiry_retention_failed")
+        await asyncio.sleep(settings.retention_interval_s)
+
+
 # ─────────────────────────────── enquiries (FR-6.3) ───────────────────────────────
 class EnquiryIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
@@ -111,6 +138,8 @@ class EnquiryIn(BaseModel):
     phone: str | None = Field(None, pattern=r"^\+?[0-9 \-]{8,16}$")
     message: str = Field(min_length=1, max_length=2000)
     source: str = Field("listing_page", pattern=r"^(listing_page|qa_unknown)$")
+    # DPDP Act 2023: explicit consent to share these details with this listing's agent, for this enquiry only.
+    consent: Literal[True]
 
 
 @app.post("/api/v1/listings/{listing_id}/enquiries", status_code=201)
@@ -124,7 +153,8 @@ async def create_enquiry(listing_id: str, body: EnquiryIn, user: OptionalUser) -
         "listingId": listing_id,
         "listingTitle": summary["title"],
         "buyerId": user.id if user else None,
-        **body.model_dump(),
+        **body.model_dump(exclude={"consent"}),
+        "consentAt": _now(),
         "createdAt": _now(),
         "eventPublished": False,
     }

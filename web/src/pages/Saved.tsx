@@ -10,7 +10,7 @@ function toItem(l: Listing): SearchItem {
   return {
     id: l.id, title: l.title, listing_type: l.listing_type, property_type: l.property_type, price: l.price,
     bedrooms: l.bedrooms, bathrooms: l.bathrooms, carpet_area_sqft: l.carpet_area_sqft, locality: l.locality,
-    city: l.city, thumbnail_url: l.images[0]?.thumb_url ?? null, match: { score: 0, reasons: [] },
+    city: l.city, lat: l.lat, lng: l.lng, thumbnail_url: l.images[0]?.thumb_url ?? null, match: { score: 0, reasons: [] },
   };
 }
 

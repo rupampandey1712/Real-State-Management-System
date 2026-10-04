@@ -31,5 +31,11 @@ class BlobStore:
         data = await downloader.readall()
         return data, downloader.properties.content_settings.content_type or "application/octet-stream"
 
+    async def delete(self, key: str) -> None:
+        try:
+            await self._container.delete_blob(key)
+        except ResourceNotFoundError:
+            pass
+
     async def close(self) -> None:
         await self._service.close()

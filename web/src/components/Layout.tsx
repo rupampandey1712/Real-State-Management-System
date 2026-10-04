@@ -20,7 +20,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             <NavLink to="/search" className={navClass}>Find a home</NavLink>
             {user && <NavLink to="/me/saved" className={navClass}>Saved</NavLink>}
             {user && user.role !== "buyer" && <NavLink to="/agent/listings" className={navClass}>My listings</NavLink>}
-            {user?.role === "admin" && <NavLink to="/admin" className={navClass}>People</NavLink>}
+            {user?.role === "admin" && <NavLink to="/admin" className={navClass}>Admin</NavLink>}
           </nav>
           <div className="ml-auto flex items-center gap-4 text-[0.95rem]">
             {user ? (
@@ -39,6 +39,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         <div className="mx-auto flex max-w-6xl flex-wrap justify-between gap-2 px-5 py-6 text-sm text-slate">
           <p>Homes in Pune, Bengaluru and Mumbai.</p>
           <p>AI answers use only what a listing says. Confirm details with the agent before you decide.</p>
+          <p><Link to="/privacy" className="hover:text-ink">How we use your details</Link> · Map data © OpenStreetMap contributors</p>
         </div>
       </footer>
     </div>

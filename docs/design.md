@@ -64,14 +64,15 @@ Tables are split across service-owned databases (architecture.md §3): `users` -
 `search_listings` projection -> **search**; `document_chunks` -> **ai**. `enquiries`, `favourites`,
 `saved_searches` and `ai_requests` are **Cosmos DB containers** (ADR-0012), shown here as SQL only to
 document their fields. Cross-service foreign keys below are logical, not enforced. Locally, location is
-stored as `lat`/`lng` floats (PostGIS is a later option).
+stored as `lat`/`lng` floats with a btree index in the search read model (PostGIS is a later option; the
+`geography` column and GiST index sketched in §2.2 below were never built — ADR-0018).
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE TYPE user_role        AS ENUM ('buyer','agent','admin');
-CREATE TYPE listing_status   AS ENUM ('draft','published','unpublished','archived');
+CREATE TYPE listing_status   AS ENUM ('draft','published','unpublished','archived','removed','suspended');
 CREATE TYPE listing_type     AS ENUM ('sale','rent');
 CREATE TYPE property_type    AS ENUM ('apartment','independent_house','villa','plot','commercial');
 CREATE TYPE furnishing       AS ENUM ('unfurnished','semi_furnished','fully_furnished');
@@ -262,35 +263,37 @@ Error codes: `validation_error` 422, `unauthorized` 401, `forbidden` 403, `not_f
 `conflict` 409, `rate_limited` 429 (with `Retry-After`), `ai_unavailable` 503, `internal` 500.
 
 ### 3.2 Endpoint catalogue
+The generated, always-current list is **[api-reference.md](api-reference.md)** (`python scripts/gen_api_reference.py`).
+Summary by requirement:
+
 | Method | Path | Purpose | Auth | Req |
 |---|---|---|---|---|
-| GET | `/health` | Liveness (+ `?deep=1` checks DB/Redis) | public | — |
-| GET | `/me` | Current user | user | FR-6 |
-| DELETE | `/me` | Request account deletion | user | FR-6.4 |
-| GET | `/listings` | Classic search | public | FR-2 |
+| GET/DELETE | `/me` | Current user · delete account (body `{"confirm":"DELETE"}`) | user | FR-6, FR-6.4 |
+| POST | `/me/agent-request` | Apply to become an agent (verified by an admin) | user | FR-6.1, T1.16 |
+| GET | `/auth/providers` · POST `/auth/otp/request` · `/auth/otp/verify` · `/auth/magic/verify` · `/auth/google` | Sign-in (ADR-0017) | public, rate-limited | FR-6.1 |
+| GET | `/search` | Classic search (filters, `near`, `bbox`, `sort`) | public | FR-2 |
+| POST | `/search/nl` | AI NL search (+ `sort`, `bbox`) | public, rate-limited | FR-3 |
 | GET | `/listings/{id}` | Detail | public* | FR-2 |
-| POST | `/listings` | Create draft | agent | FR-1.1 |
-| PATCH | `/listings/{id}` | Update | owner | FR-1.1 |
-| POST | `/listings/{id}/publish` · `/unpublish` · `/archive` | Status transitions | owner | FR-1.1 |
-| POST | `/listings/{id}/images` | Get presigned upload URL, then confirm | owner | FR-1.2 |
-| PATCH | `/listings/{id}/images/order` | Reorder | owner | FR-1.2 |
-| POST | `/listings/{id}/documents` | Upload doc → async processing | owner | FR-1.3 |
-| GET | `/listings/{id}/documents` | Docs + status | owner | FR-1.3 |
-| POST | `/search/nl` | AI NL search | public, rate-limited | FR-3 |
-| POST | `/ai/describe` | Generate description draft | agent | FR-4 |
+| POST / PATCH | `/listings` · `/listings/{id}` | Create draft · update | agent / owner | FR-1.1 |
+| POST | `/listings/{id}/publish` · `/unpublish` · `/archive` · `/duplicate` | Status transitions, copy | owner | FR-1.1, FR-1.5 |
+| POST · PUT · DELETE | `/listings/{id}/images` · `/images/order` · `/images/{image_id}` | Upload (JPEG/PNG/WebP/HEIC) · reorder · delete | owner | FR-1.2 |
+| POST · GET · DELETE | `/listings/{id}/documents` · `/documents/{doc_id}/file` · `/documents/{doc_id}` | Upload → async processing · owner download · delete | owner | FR-1.3 |
+| POST | `/ai/describe` · `/ai/improve` | Generate draft · rewrite agent's text | agent | FR-4 |
+| GET | `/ai/features` | Which AI features are on | public | FR-7.4 |
 | POST | `/listings/{id}/qa` | Q&A turn (SSE) | public, rate-limited | FR-5 |
 | GET | `/listings/{id}/qa/suggestions` | Starter questions | public | FR-5.4 |
-| POST | `/ai/feedback` | 👍/👎 on an ai_request | public | FR-5.6 |
-| POST | `/listings/{id}/enquiries` | Contact agent | public, rate-limited | FR-6.3 |
-| GET/POST/DELETE | `/me/favourites` | Favourites | buyer | FR-6.2 |
-| GET/POST/DELETE | `/me/saved-searches` | Saved searches | buyer | FR-6.2 |
+| POST | `/ai/feedback` | 👍/👎 + optional comment on an ai_request | public | FR-5.6 |
+| POST | `/listings/{id}/enquiries` | Contact agent (requires `consent: true`) | public, rate-limited | FR-6.3 |
+| GET/PUT/DELETE | `/me/favourites` · GET/POST/DELETE `/me/saved-searches` | Favourites, saved searches | user | FR-6.2, FR-3.5 |
 | GET | `/agent/listings` · `/agent/enquiries` | Agent dashboard | agent | FR-1 |
-| POST | `/admin/listings/{id}/moderate` | Unpublish/restore w/ reason | admin | FR-7.1 |
-| GET | `/admin/ai-metrics?from&to&feature` | AI metrics | admin | FR-7.2 |
-| GET | `/admin/ai-requests?feedback=-1` | Negative feedback review | admin | FR-7.3 |
-| GET/PATCH | `/admin/flags` | Feature flags | admin | FR-7.4 |
+| GET · POST | `/admin/users` · `/admin/users/{id}/role` · `/suspend` · `/reinstate` · GET `/actions` | People, roles, suspension with reason (audited) | admin | FR-7.1 |
+| GET · POST | `/admin/listings` · `/admin/listings/{id}/takedown` · `/restore` · GET `/moderation` | Listing moderation with reason (audited) | admin | FR-7.1 |
+| GET | `/admin/ai/metrics?days=` | Per feature per day: requests, tokens, cost, latency, errors, 👍/👎 | admin | FR-7.2 |
+| GET | `/admin/ai/feedback?rating=-1` · `/admin/ai/feedback/export` | Negative feedback (redacted) · JSONL eval candidates | admin | FR-7.3 |
+| GET · PUT | `/admin/ai/flags` · `/admin/ai/flags/{name}` | Runtime feature flags (ADR-0019) | admin | FR-7.4 |
 
-\* Non-published listings visible only to owner/admin.
+\* Non-published listings visible only to owner/admin. Listing statuses: `draft`, `published`, `unpublished`,
+`archived` (agent), `removed` (admin takedown), `suspended` (agent's account suspended).
 
 ### 3.3 Key contracts
 
@@ -435,7 +438,7 @@ SELECT *, (0.55 * sem
          + 0.10 * freshness(published_at)) AS score
 FROM candidates ORDER BY score DESC, id LIMIT :limit;
 ```
-- `near` uses a `pois` table (metro stations, schools…) loaded from OpenStreetMap extracts; distance ≤ 1.5 km scores 1.0, decays to 0 at 5 km.
+- `near` uses a POI list bundled with the search service (`app/data/pois.csv`, OSM-derived, held in memory — ADR-0018); distance ≤ 1.5 km scores 1.0, decays to 0 at 5 km. With no `near` in the query every row scores 1.0, so it never reorders.
 - Weights live in config and are tuned with the search eval set.
 
 **Fallback (`meta.mode = "fallback"`):** if (a) fails/times out → Postgres full-text search on
@@ -521,15 +524,15 @@ All handlers are idempotent (keyed by aggregate id). Re-index everything by re-p
 | Route | Page | Content |
 |---|---|---|
 | `/` | `Home` | Hero NL search box with rotating examples, popular localities |
-| `/search?q=…` or `/search?city=…` | `Search` | NL mode (`POST /search/nl`) or classic mode (`GET /search`); chips, assumptions, "Show more" |
+| `/search?q=…` or `/search?city=…` | `Search` | NL mode (`POST /search/nl`) or classic mode (`GET /search`); chips (removable + "Edit filters"), filter panel, sort, list/map view with "Search this area" (`bbox`), "Show more"; all state in the URL |
 | `/listings/:id` | `ListingDetail` | Gallery, key facts, description, amenities, **Q&A panel**, enquiry form |
-| `/login` | `Login` | Email -> one-time code (dev code shown locally) |
+| `/login`, `/login/magic` | `Login`, `LoginMagic` | Email → sign-in link + 6-digit code (dev code shown locally); Google when configured (ADR-0017) |
+| `/privacy` | `Privacy` | DPDP notice: what we collect, why, retention, rights |
 | `/agent/listings` | `AgentListings` | Agent's listings table + enquiries |
 | `/agent/listings/new`, `/agent/listings/:id/edit` | `ListingEditor` | Form, amenities, photo/PDF upload, **AI description** panel, publish |
 | `/me/saved` | `Saved` | Saved homes (cards) and saved searches (re-run or remove) |
-| `/account` | `Account` | Email, account type, sign out, sign out of all devices |
-| `/admin` | `Admin` | People: find by email, set role, verify agents; rotate sign-in keys |
-| (later) `/admin/ai`, `/admin/moderation` | — | AI dashboard (T4.4), listing moderation (T4.3) |
+| `/account` | `Account` | Email, account type, apply to be an agent, sign out (everywhere), delete account |
+| `/admin` (`?tab=people\|listings\|ai`) | `Admin` | People (roles, verification, suspension, history, key rotation) · Listings (takedown/restore, history) · AI (metrics, flags, 👎 review + export) |
 
 ### 6.2 Key components (`web/src/components`)
 - `NLSearchBox` — input with rotating example placeholders; navigates to `/search?q=`.

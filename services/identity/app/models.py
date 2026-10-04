@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from estate_common.db import Base
+from estate_common.outbox import OutboxMessage  # noqa: F401 — registers the outbox table for migrations
 
 
 class User(Base):
@@ -18,6 +19,12 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(10), default="buyer")  # buyer | agent | admin
     agent_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Agent application (T1.16): an admin verifies these before the agent can list.
+    agency_name: Mapped[str | None] = mapped_column(String(120))
+    rera_agent_id: Mapped[str | None] = mapped_column(String(40))
+    agent_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Account deletion (FR-6.4): personal fields are scrubbed at once; the row is purged after 30 days.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -49,3 +56,17 @@ class RefreshToken(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     replaced_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     user_agent: Mapped[str | None] = mapped_column(String(200))
+
+
+class AdminAction(Base):
+    """Audit log for admin actions on people (FR-7.1): suspend, reinstate, role changes. Reason required."""
+
+    __tablename__ = "admin_actions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    admin_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    action: Mapped[str] = mapped_column(String(20))  # suspend | reinstate | role
+    detail: Mapped[str | None] = mapped_column(String(60))  # e.g. the new role
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -7,7 +7,7 @@ Document ids look like '<feature>.<hex>' so feedback can locate the partition fr
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from azure.cosmos import PartitionKey
@@ -128,6 +128,44 @@ class AIRequestStore:
         item["feedback"], item["feedback_comment"] = rating, redact_pii(comment or "")[:1000] or None
         await self._container.replace_item(item=request_id, body=item)
         return True
+
+    @property
+    def enabled(self) -> bool:
+        return self._container is not None
+
+    async def _query(self, query: str, parameters: list[dict]) -> list[dict]:
+        if self._container is None:
+            return []
+        return [item async for item in self._container.query_items(query=query, parameters=parameters)]
+
+    async def recent(self, days: int) -> list[dict]:
+        """Metric fields of every request in the last `days` days (cross-partition; bounded by the TTL)."""
+        since = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+        return await self._query(
+            "SELECT c.feature, c.status, c.created_at, c.latency_ms, c.input_tokens, c.output_tokens, "
+            "c.thinking_tokens, c.cost_usd_micros, c.feedback FROM c WHERE c.created_at >= @since",
+            [{"name": "@since", "value": since}],
+        )
+
+    async def with_feedback(self, rating: int, feature: str | None, limit: int) -> list[dict]:
+        query = "SELECT * FROM c WHERE c.feedback = @rating"
+        parameters: list[dict] = [{"name": "@rating", "value": rating}]
+        if feature:
+            query += " AND c.feature = @feature"
+            parameters.append({"name": "@feature", "value": feature})
+        rows = await self._query(query, parameters)
+        return sorted(rows, key=lambda r: r.get("created_at", ""), reverse=True)[:limit]
+
+    async def forget_user(self, user_id: str) -> int:
+        """FR-6.4: unlink a deleted account from its AI requests. Content was PII-redacted when logged;
+        the rows stay (without the user id) for cost and quality metrics until their TTL expires."""
+        if self._container is None:
+            return 0
+        rows = await self._query("SELECT * FROM c WHERE c.user_id = @u", [{"name": "@u", "value": user_id}])
+        for row in rows:
+            row["user_id"] = None
+            await self._container.replace_item(item=row["id"], body=row)
+        return len(rows)
 
     async def close(self) -> None:
         if self._client is not None:

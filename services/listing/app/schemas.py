@@ -42,7 +42,8 @@ class ListingFields(BaseModel):
     parking_covered: int = Field(default=0, ge=0, le=10)
     parking_open: int = Field(default=0, ge=0, le=10)
     pet_policy: PetPolicy = "unknown"
-    possession: str | None = Field(default=None, max_length=20)
+    possession: str | None = Field(default=None, max_length=20, pattern=r"^(ready_to_move|under_construction|\d{4}-\d{2}(-\d{2})?)$")
+    property_age_years: int | None = Field(default=None, ge=0, le=150)
     amenities: list[Amenity] = []
     address_line: str = Field(min_length=3, max_length=200)
     locality: str = Field(min_length=2, max_length=80)
@@ -89,6 +90,7 @@ class ListingUpdate(BaseModel):
     parking_open: int | None = None
     pet_policy: PetPolicy | None = None
     possession: str | None = None
+    property_age_years: int | None = None
     amenities: list[Amenity] | None = None
     address_line: str | None = None
     locality: str | None = None
@@ -147,6 +149,7 @@ class ListingOut(BaseModel):
     parking_open: int
     pet_policy: str
     possession: str | None
+    property_age_years: int | None
     amenities: list[str]
     address_line: str
     locality: str
@@ -164,6 +167,7 @@ class ListingSummary(BaseModel):
     id: uuid.UUID
     status: str
     title: str
+    description_ai: bool
     price: Money
     bedrooms: int
     locality: str
@@ -171,3 +175,31 @@ class ListingSummary(BaseModel):
     thumbnail_url: str | None
     documents_count: int
     updated_at: datetime
+
+
+class ImageOrder(BaseModel):
+    image_ids: list[uuid.UUID] = Field(min_length=1, max_length=30)
+
+
+class ModerationRequest(BaseModel):
+    reason: str = Field(min_length=5, max_length=1000)
+
+
+class ModerationActionOut(BaseModel):
+    id: uuid.UUID
+    action: str
+    reason: str
+    admin_id: uuid.UUID
+    created_at: datetime
+
+
+class AdminListingOut(BaseModel):
+    id: uuid.UUID
+    agent_id: uuid.UUID
+    status: str
+    title: str
+    locality: str
+    city: str
+    price: Money
+    updated_at: datetime
+    last_action: ModerationActionOut | None

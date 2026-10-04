@@ -30,6 +30,7 @@ log = structlog.get_logger(__name__)
 TIMEOUTS = {
     "nl_search": settings.ai_timeout_search_s,
     "describe": settings.ai_timeout_describe_s,
+    "improve": settings.ai_timeout_describe_s,
     "qa": settings.ai_timeout_qa_s,
 }
 RETRYABLE_CODES = {408, 429, 500, 502, 503, 504}

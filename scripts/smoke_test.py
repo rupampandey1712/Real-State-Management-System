@@ -132,9 +132,11 @@ def main() -> None:
     agent.headers["Authorization"] = f"Bearer {sign_in(agent, 'agent@example.com')}"
     payload = {
         "listing_type": "sale", "property_type": "apartment", "title": "Smoke test 2 BHK in Kharadi",
-        "description": "Test listing created by the smoke test.", "price_inr": 7_500_000, "maintenance_inr": 3500,
-        "bedrooms": 2, "bathrooms": 2, "carpet_area_sqft": 900, "pet_policy": "allowed", "amenities": ["gym", "lift"],
-        "address_line": "Smoke Tower", "locality": "Kharadi", "city": "Pune",
+        "description": "Test listing created by the smoke test. A bright two-bedroom home near the IT park.",
+        "price_inr": 7_500_000, "maintenance_inr": 3500, "bedrooms": 2, "bathrooms": 2, "carpet_area_sqft": 900,
+        "furnishing": "semi_furnished", "possession": "ready_to_move", "pet_policy": "allowed", "amenities": ["gym", "lift"],
+        "address_line": "Smoke Tower", "locality": "Kharadi", "city": "Pune", "pincode": "411014",
+        "lat": 18.5515, "lng": 73.9348,
     }
     key = uuid.uuid4().hex
     first = agent.post("/api/v1/listings", json=payload, headers={"Idempotency-Key": key})
@@ -142,11 +144,21 @@ def main() -> None:
     check("create listing is idempotent", first.status_code == 201 and second.json()["id"] == first.json()["id"]
           and second.headers.get("Idempotent-Replayed") == "true")
     listing_id = first.json()["id"]
+    incomplete = agent.post("/api/v1/listings", json={**payload, "pincode": None, "furnishing": None},
+                            headers={"Idempotency-Key": uuid.uuid4().hex}).json()["id"]
+    blocked = agent.post(f"/api/v1/listings/{incomplete}/publish")
+    check("publish blocked with each missing field (FR-1 AC)", blocked.status_code == 422
+          and {d["field"] for d in blocked.json()["error"]["details"]} == {"pincode", "furnishing"})
+    agent.post(f"/api/v1/listings/{incomplete}/archive")
     check("publish listing", agent.post(f"/api/v1/listings/{listing_id}/publish").json()["status"] == "published")
     wait_for("published listing appears in search",
              lambda: any(i["id"] == listing_id for i in gw.get("/api/v1/search", params={
                  "locality": "Kharadi", "limit": 50, "nocache": uuid.uuid4().hex}).json()["items"]), timeout_s=60)
     check("publish → event → searchable", True)
+    in_box = gw.get("/api/v1/search", params={"bbox": "73.90,18.50,73.98,18.60", "limit": 50, "nocache": uuid.uuid4().hex}).json()
+    out_box = gw.get("/api/v1/search", params={"bbox": "72.80,19.00,72.90,19.10", "limit": 50, "nocache": uuid.uuid4().hex}).json()
+    check("map-area search (bbox) filters by location (FR-2.3)",
+          any(i["id"] == listing_id for i in in_box["items"]) and all(i["id"] != listing_id for i in out_box["items"]))
 
     # ── document → AI ingestion → status event back ────────────────────────────────
     pdf = minimal_pdf("Society rules: pets are allowed. Dogs must be leashed in common areas.")
@@ -170,7 +182,8 @@ def main() -> None:
     # ── engagement ─────────────────────────────────────────────────────────────────
     marker = uuid.uuid4().hex[:8]
     enquiry = buyer.post(f"/api/v1/listings/{listing_id}/enquiries", headers={"Idempotency-Key": uuid.uuid4().hex},
-                         json={"name": "Smoke Buyer", "email": "buyer@example.com", "message": f"Is it available? {marker}"})
+                         json={"name": "Smoke Buyer", "email": "buyer@example.com", "message": f"Is it available? {marker}",
+                               "consent": True})
     check("send enquiry", enquiry.status_code == 201)
     wait_for("agent email delivered (engagement → Service Bus → notification → Mailpit)",
              lambda: any("Smoke test 2 BHK" in m["Subject"] for m in httpx.get(f"{MAILPIT}/api/v1/messages").json()["messages"]),

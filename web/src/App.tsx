@@ -10,6 +10,8 @@ import Home from "./pages/Home";
 import ListingDetail from "./pages/ListingDetail";
 import ListingEditor from "./pages/ListingEditor";
 import Login from "./pages/Login";
+import LoginMagic from "./pages/LoginMagic";
+import Privacy from "./pages/Privacy";
 import Saved from "./pages/Saved";
 import Search from "./pages/Search";
 
@@ -32,7 +34,7 @@ function RequireAgent({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   if (loading) return <p className="text-slate">Loading…</p>;
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role === "buyer") return <p className="text-lg">This area is for verified agents. Contact support to get your agent account verified.</p>;
+  if (user.role === "buyer") return <p className="text-lg">This area is for agents. <a href="/account" className="link">Apply to be an agent</a> from your account page.</p>;
   return children;
 }
 
@@ -44,6 +46,8 @@ export default function App() {
         <Route path="/search" element={<Search />} />
         <Route path="/listings/:id" element={<ListingDetail />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/login/magic" element={<LoginMagic />} />
+        <Route path="/privacy" element={<Privacy />} />
         <Route path="/me/saved" element={<RequireUser><Saved /></RequireUser>} />
         <Route path="/account" element={<RequireUser><Account /></RequireUser>} />
         <Route path="/admin" element={<RequireAdmin><Admin /></RequireAdmin>} />

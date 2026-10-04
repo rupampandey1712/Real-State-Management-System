@@ -1,11 +1,9 @@
-"""Email one-time passcodes (local auth). Production uses Microsoft Entra External ID (ADR-0009)."""
+"""Email one-time passcodes. Sent together with a magic link (app/signin.py); production may use Entra External ID (ADR-0009)."""
 
 import hashlib
 import hmac
 import secrets
-from email.message import EmailMessage
 
-import aiosmtplib
 import redis.asyncio as redis
 
 from app.config import settings
@@ -35,12 +33,3 @@ async def verify_code(email: str, code: str) -> bool:
         return False
     await _redis.delete(f"otp:{email}")
     return True
-
-
-async def send_code_email(email: str, code: str) -> None:
-    message = EmailMessage()
-    message["From"] = settings.email_from
-    message["To"] = email
-    message["Subject"] = f"Your EstateAI sign-in code: {code}"
-    message.set_content(f"Your sign-in code is {code}. It expires in {settings.otp_ttl_s // 60} minutes.")
-    await aiosmtplib.send(message, hostname=settings.smtp_host, port=settings.smtp_port)

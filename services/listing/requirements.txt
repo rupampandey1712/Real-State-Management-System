@@ -2,4 +2,5 @@ sqlalchemy[asyncio]>=2.0
 asyncpg>=0.29
 azure-storage-blob[aio]>=12.22
 pillow>=10.4
+pillow-heif>=0.18  # HEIC/HEIF photos from iPhones (FR-1.2)
 python-multipart>=0.0.9

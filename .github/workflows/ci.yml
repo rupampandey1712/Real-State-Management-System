@@ -39,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        path: [libs/common, services/identity, services/listing, services/ai]
+        path: [libs/common, services/identity, services/listing, services/ai, services/search, services/engagement]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
