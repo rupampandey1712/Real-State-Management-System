@@ -11,6 +11,11 @@ export async function expectNoA11yViolations(page: Page, context: string) {
   expect(summary, `axe violations on ${context}`).toEqual([]);
 }
 
+/** Maps need WebGL. Some headless browsers (Firefox on CI runners) have none; e2e/resilience.spec.ts covers that case. */
+export async function hasWebGL(page: Page): Promise<boolean> {
+  return page.evaluate(() => !!document.createElement("canvas").getContext("webgl2") || !!document.createElement("canvas").getContext("webgl"));
+}
+
 /** A published listing id from the API (requires seed data). */
 export async function anyListingId(request: APIRequestContext, query = "city=Pune"): Promise<string> {
   const response = await request.get(`/api/v1/search?${query}&limit=1`);

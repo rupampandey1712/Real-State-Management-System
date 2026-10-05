@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { anyListingId } from "./helpers";
+import { anyListingId, hasWebGL } from "./helpers";
 
 // The requirements' user journeys and FR-2 browse features, in every browser of the matrix (NFR-11).
 
@@ -52,6 +52,7 @@ test("FR-2.1/2.2/2.4: filters and sort live in the URL", async ({ page }) => {
 
 test("FR-2.3: map view shows pins that open listings", async ({ page }) => {
   await page.goto("/search?city=Pune&view=map");
+  test.skip(!(await hasWebGL(page)), "no WebGL in this browser — the fallback is covered by resilience.spec.ts");
   await expect(page.getByRole("region", { name: /Map of the homes/ })).toBeVisible();
   // the last pin in DOM order is drawn on top; dense localities overlap (clustering is a follow-up)
   const pin = page.getByRole("button", { name: /Open listing$/ }).last();
@@ -64,6 +65,10 @@ test("listing page shows facts, map pin and enquiry consent", async ({ page, req
   const id = await anyListingId(request);
   await page.goto(`/listings/${id}`);
   await expect(page.getByText("Carpet area")).toBeVisible();
-  await expect(page.getByRole("region", { name: /Map showing the home's location/ })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: /I agree to share my name/ })).toBeVisible();
+  if (await hasWebGL(page)) {
+    await expect(page.getByRole("region", { name: /Map showing the home's location/ })).toBeVisible();
+  } else {
+    await expect(page.getByText(/The map couldn't load/)).toBeVisible();
+  }
 });

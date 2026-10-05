@@ -4,6 +4,7 @@ import { Link, useLocation, useParams } from "react-router-dom";
 
 import FavouriteButton from "../components/FavouriteButton";
 import { PhotoPlaceholder } from "../components/ListingCard";
+import MapBoundary from "../components/MapBoundary";
 import QAPanel from "../components/QAPanel";
 import { track, type SearchMode } from "../lib/analytics";
 import { api, newIdempotencyKey, post } from "../lib/api";
@@ -202,10 +203,10 @@ export default function ListingDetail() {
           {listing.lat !== null && listing.lng !== null && (
             <section className="space-y-3">
               <h2 className="text-xl font-bold">Where it is</h2>
-              <Suspense fallback={<div className="h-64 animate-pulse rounded-lg bg-rule/50" />}>
+              <MapBoundary><Suspense fallback={<div className="h-64 animate-pulse rounded-lg bg-rule/50" />}>
                 <PinMap lat={listing.lat} lng={listing.lng} centre={[listing.lng, listing.lat]}
                   label={`Map showing the home's location in ${listing.locality}, ${listing.city}`} />
-              </Suspense>
+              </Suspense></MapBoundary>
               <p className="text-sm text-slate">The pin is placed by the agent. Confirm the exact address with them.</p>
             </section>
           )}

@@ -5,6 +5,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import FilterChips, { filtersToParams, formatInr } from "../components/FilterChips";
 import FilterPanel from "../components/FilterPanel";
 import ListingCard from "../components/ListingCard";
+import MapBoundary from "../components/MapBoundary";
 import NLSearchBox from "../components/NLSearchBox";
 import { track, type SearchMode } from "../lib/analytics";
 import { api, newIdempotencyKey, post } from "../lib/api";
@@ -188,10 +189,10 @@ export default function Search() {
       )}
 
       {view === "map" && first?.is_property_query && (
-        <Suspense fallback={<div className="h-[28rem] animate-pulse rounded-lg bg-rule/50" aria-label="Loading map" />}>
+        <MapBoundary><Suspense fallback={<div className="h-[28rem] animate-pulse rounded-lg bg-rule/50" aria-label="Loading map" />}>
           <MapView items={items} bbox={bbox} searchMode={mode} city={params.get("city") ?? first?.interpreted_filters?.city ?? null}
             onSearchArea={(box) => update({ bbox: box, cursor: null })} />
-        </Suspense>
+        </Suspense></MapBoundary>
       )}
 
       <div className="grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">

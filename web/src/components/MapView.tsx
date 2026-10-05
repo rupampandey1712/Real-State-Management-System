@@ -43,15 +43,21 @@ export default function MapView({ items, bbox, city, onSearchArea, searchMode }:
   useEffect(() => {
     if (!container.current) return;
     const initial = bbox?.split(",").map(Number);
-    const instance = new maplibregl.Map({
-      container: container.current,
-      style: MAP_STYLE,
-      bounds: initial?.length === 4 ? [[initial[0], initial[1]], [initial[2], initial[3]]] : undefined,
-      center: initial ? undefined : CITY_CENTRES[city ?? ""] ?? [76.0, 16.0],
-      zoom: initial ? undefined : city ? 11 : 5,
-      maxBounds: [[66, 6], [90, 30]],
-      attributionControl: { compact: true },
-    });
+    let instance: maplibregl.Map;
+    try {
+      instance = new maplibregl.Map({
+        container: container.current,
+        style: MAP_STYLE,
+        bounds: initial?.length === 4 ? [[initial[0], initial[1]], [initial[2], initial[3]]] : undefined,
+        center: initial ? undefined : CITY_CENTRES[city ?? ""] ?? [76.0, 16.0],
+        zoom: initial ? undefined : city ? 11 : 5,
+        maxBounds: [[66, 6], [90, 30]],
+        attributionControl: { compact: true },
+      });
+    } catch {
+      setFailed(true); // no WebGL (old device, locked-down or headless browser): the list still works
+      return;
+    }
     instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     // Only user gestures count as "moved", not our own fitBounds below.
     instance.on("moveend", (event) => { if ((event as { originalEvent?: unknown }).originalEvent) setMoved(true); });
@@ -92,7 +98,8 @@ export default function MapView({ items, bbox, city, onSearchArea, searchMode }:
 
   return (
     <div className="relative">
-      <div ref={container} className="h-[28rem] w-full overflow-hidden rounded-lg border border-rule bg-rule/40 sm:h-[34rem]"
+      {failed && <p className="mb-2 text-sm text-danger" role="status">The map couldn't load. The list of homes still works.</p>}
+      <div ref={container} hidden={failed} className="h-[28rem] w-full overflow-hidden rounded-lg border border-rule bg-rule/40 sm:h-[34rem]"
         role="region" aria-label="Map of the homes in these results. The list of homes has the same results." />
       {moved && (
         <button type="button" onClick={() => map.current && onSearchArea(boundsToBbox(map.current.getBounds()))}
@@ -100,7 +107,6 @@ export default function MapView({ items, bbox, city, onSearchArea, searchMode }:
           Search this area
         </button>
       )}
-      {failed && <p className="mt-2 text-sm text-danger" role="status">The map couldn't load. The list of homes still works.</p>}
       {unpinned > 0 && (
         <p className="mt-2 text-sm text-slate">
           {unpinned === 1 ? "1 home has" : `${unpinned} homes have`} no map pin yet and {unpinned === 1 ? "appears" : "appear"} only in the list.

@@ -1,7 +1,7 @@
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import maplibregl from "maplibre-gl";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { MAP_STYLE } from "./MapView";
 
@@ -22,17 +22,24 @@ export default function PinMap({ lat, lng, centre, onChange, label }: Props) {
   const marker = useRef<maplibregl.Marker | null>(null);
   const changeRef = useRef(onChange);
   changeRef.current = onChange;
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     if (!container.current) return;
-    const instance = new maplibregl.Map({
-      container: container.current,
-      style: MAP_STYLE,
-      center: lat !== null && lng !== null ? [lng, lat] : centre,
-      zoom: lat !== null ? 15 : 11,
-      attributionControl: { compact: true },
-      cooperativeGestures: !onChange, // on the listing page, scrolling the page shouldn't zoom the map
-    });
+    let instance: maplibregl.Map;
+    try {
+      instance = new maplibregl.Map({
+        container: container.current,
+        style: MAP_STYLE,
+        center: lat !== null && lng !== null ? [lng, lat] : centre,
+        zoom: lat !== null ? 15 : 11,
+        attributionControl: { compact: true },
+        cooperativeGestures: !onChange, // on the listing page, scrolling the page shouldn't zoom the map
+      });
+    } catch {
+      setFailed(true); // no WebGL: the editor still has the latitude/longitude fields
+      return;
+    }
     instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     if (onChange) instance.on("click", (e) => changeRef.current?.(+e.lngLat.lat.toFixed(6), +e.lngLat.lng.toFixed(6)));
     map.current = instance;
@@ -64,5 +71,8 @@ export default function PinMap({ lat, lng, centre, onChange, label }: Props) {
     }
   }, [lat, lng, onChange]);
 
+  if (failed) {
+    return <p className="rounded-lg border border-rule bg-paper p-4 text-sm text-slate" role="status">The map couldn't load on this device{onChange ? " — enter the latitude and longitude below instead" : ""}.</p>;
+  }
   return <div ref={container} role="region" aria-label={label} className="h-64 w-full overflow-hidden rounded-lg border border-rule bg-rule/40" />;
 }

@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import DescriptionGenerator from "../components/DescriptionGenerator";
 import ImproveText from "../components/ImproveText";
+import MapBoundary from "../components/MapBoundary";
 import PhotoManager from "../components/PhotoManager";
 import { editRatio, track } from "../lib/analytics";
 import { ApiError, api, del, download, newIdempotencyKey, patch, post } from "../lib/api";
@@ -298,10 +299,10 @@ export default function ListingEditor() {
               {input("rera_id", form.possession !== "ready_to_move" && !rent ? "RERA number (required)" : "RERA number")}
               <div className="space-y-2 sm:col-span-3">
                 <p className="field-label">Map pin <span className="font-normal">— click the map to place it, then drag to adjust. Buyers see it on the map.</span></p>
-                <Suspense fallback={<div className="h-64 animate-pulse rounded-lg bg-rule/50" />}>
+                <MapBoundary><Suspense fallback={<div className="h-64 animate-pulse rounded-lg bg-rule/50" />}>
                   <PinMap lat={lat} lng={lng} centre={CITY_CENTRES[String(form.city)] ?? CITY_CENTRES.Pune}
                     onChange={(la, ln) => { set("lat", la); set("lng", ln); }} label="Map for placing the listing's pin" />
-                </Suspense>
+                </Suspense></MapBoundary>
                 <div className="grid gap-4 sm:grid-cols-3">
                   {input("lat", "Latitude", { type: "number", step: "any", min: -90, max: 90 })}
                   {input("lng", "Longitude", { type: "number", step: "any", min: -180, max: 180 })}
