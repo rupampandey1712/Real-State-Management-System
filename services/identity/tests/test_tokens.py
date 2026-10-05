@@ -112,3 +112,18 @@ async def test_expired_and_unknown_tokens_are_rejected():
         await tokens.rotate_refresh_token(FakeSession(expired), "raw", "ua")
     with pytest.raises(tokens.RefreshRejected, match="unknown"):
         await tokens.rotate_refresh_token(FakeSession(None), "raw", "ua")
+
+
+async def test_token_issued_right_after_a_cut_off_survives_it(monkeypatch):
+    key = tokens.generate_key()
+    auth.set_key_resolver(lambda _t: jwt.PyJWK(key.public_jwk).key)
+    store = fakeredis.FakeAsyncRedis()
+    monkeypatch.setattr(auth, "revocation_store", lambda: store)
+    user = make_user()
+    old, _ = tokens.issue_access_token(user, key)
+    cut_off = int(time.time()) + 1  # what role changes / logout-all write
+    await store.set(f"jwt:revoked_before:{user.id}", cut_off)
+    with pytest.raises(Unauthorized):
+        await auth.decode_token(old)
+    fresh, _ = tokens.issue_access_token(user, key, issued_at_floor=cut_off)
+    assert (await auth.decode_token(fresh)).id == str(user.id)

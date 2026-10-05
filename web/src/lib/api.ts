@@ -91,4 +91,20 @@ export const post = <T>(path: string, data?: unknown, options: RequestOptions = 
 
 export const patch = <T>(path: string, data: unknown) => api<T>(path, { method: "PATCH", body: JSON.stringify(data) });
 
+export const put = <T>(path: string, data: unknown) => api<T>(path, { method: "PUT", body: JSON.stringify(data) });
+
+export const del = <T>(path: string, data?: unknown) =>
+  api<T>(path, { method: "DELETE", body: data === undefined ? undefined : JSON.stringify(data) });
+
+/** Authenticated file download (the token is in memory, so a plain link can't carry it). */
+export async function download(path: string, filename: string): Promise<void> {
+  let response = await send(path, {});
+  if (response.status === 401 && (await refreshSession())) response = await send(path, {});
+  if (!response.ok) throw new ApiError(response.status, "download_failed", "The file couldn't be downloaded.");
+  const url = URL.createObjectURL(await response.blob());
+  const link = Object.assign(document.createElement("a"), { href: url, download: filename });
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export const newIdempotencyKey = (): string => crypto.randomUUID();

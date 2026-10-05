@@ -61,15 +61,19 @@ async def published_keys(session: AsyncSession) -> list[SigningKey]:
 
 
 # ── access tokens ─────────────────────────────────────────────────────────────
-def issue_access_token(user: User, key: SigningKey) -> tuple[str, int]:
+def issue_access_token(user: User, key: SigningKey, issued_at_floor: int | None = None) -> tuple[str, int]:
+    """`issued_at_floor`: the user's `jwt:revoked_before` cut-off. `iat` has whole-second precision and the
+    cut-off is set one second ahead (so tokens from the revoked second die too); a token minted right after a
+    cut-off is stamped at the cut-off so it isn't rejected along with them. Verifiers allow 30 s of skew."""
     now = datetime.now(UTC)
+    iat = max(int(now.timestamp()), issued_at_floor or 0)
     claims = {
         "sub": str(user.id),
         "role": user.role,
         "agent_verified": user.agent_verified,
         "iss": settings.jwt_issuer,
         "aud": settings.jwt_audience,
-        "iat": int(now.timestamp()),
+        "iat": iat,
         "exp": int((now + timedelta(seconds=settings.access_token_ttl_s)).timestamp()),
         "jti": uuid.uuid4().hex,
     }

@@ -21,7 +21,7 @@ class AIOutputInvalid(Exception):
 
 @dataclass
 class CallContext:
-    feature: str  # nl_search | describe | qa
+    feature: str  # nl_search | describe | improve | qa
     user_id: str | None = None
     listing_id: str | None = None
 

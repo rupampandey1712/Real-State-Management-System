@@ -46,15 +46,16 @@
 - [x] **T1.9 · Listing detail page** — gallery, facts, amenities, Q&A, enquiry.
 - [x] **T1.10 · Enquiries** — engagement service (Cosmos), agent enquiries list, notification email.
 - [~] **T1.11 · Seed data** — 60 synthetic listings via `/internal/dev/seed` (no images). Todo: sample photos + sample PDFs for Q&A.
-- [ ] **T1.12 · Map view** — FR-2.3 · Deps: T0.10 · Est: M
+- [x] **T1.12 · Map view** — FR-2.3 · done 2026-10-04 (ADR-0018): MapLibre + OpenFreeMap tiles, lazy-loaded; list/map toggle on the search page with focusable price pins and "Search this area" (`bbox` on `GET /search` and `POST /search/nl`, `ix_search_geo`); pin on the listing page; click/drag pin picker in the editor.
   - Done when: MapLibre + OSM tiles on search page; markers from `lat/lng`; "search this area" (bbox filter added to search API).
+- [x] **T1.17 · Requirements gap pass (FR-1, FR-2)** — done 2026-10-04: archive + duplicate (FR-1.1, 1.5); HEIC, photo reorder/delete (FR-1.2); balconies, open parking, property age, possession date, map pin in the editor; publish blocked with per-field errors (FR-1 AC); RERA required for under-construction sale listings (FR-1.4, §7); fair-housing check on agent text at publish; classic filter panel + sort incl. relevance (FR-2.1, 2.2); editable AI chips (FR-3.2).
 - [x] **T1.13 · Alembic per Postgres service** — initial revisions for identity, listing, search, ai (generated from models, compiled to SQL offline); run before start in compose. Todo: verify against a live DB in T0.10.
   - Done when: identity, listing, search, ai have Alembic envs and an initial migration; `create_all` only when `APP_ENV=local`; migrations run as a compose one-shot and a Container Apps job.
 - [x] **T1.14 · Transactional outbox** — listing + ai (Postgres outbox + relay), engagement (outbox-in-document + relay), Service Bus duplicate detection (ADR-0016). Todo: crash test in T0.10.
   - Done when: listing and engagement write events to an outbox in the same transaction; a relay publishes and marks sent; tested by killing the publisher mid-way.
-- [ ] **T1.15 · Search perf check** — FR-2 AC, NFR-8 · Deps: T0.10 · Est: S
+- [x] **T1.15 · Search perf check** — FR-2 AC, NFR-8 · done 2026-10-04: 100k listings, 50 RPS, every request uncached → p95 150–205 ms (was 323–389 ms; fixed by loading only result columns). `perf/seed_search.py`, `perf/k6/search.js`, results in `docs/perf/phase1.md`. Todo: NL search p95 with real Gemini (cost) and 1M chunks for Q&A.
   - Done when: 100k synthetic listings; k6 p95 < 300 ms for classic search; results in `docs/perf/phase1.md`.
-- [ ] **T1.16 · Agent verification flow** — Q4 in requirements · Est: M
+- [x] **T1.16 · Agent verification flow** — Q4 in requirements · done 2026-10-04: buyers apply from `/account` (name, phone, agency, RERA agent no.) → unverified agent; admins filter "awaiting verification" and verify. Manual KYC for the MVP; Q4 still open for the process itself.
 
 ## Phase 2 — GenAI foundation
 
@@ -72,6 +73,7 @@
   - Done when: `AI_FAKE=false`, `EMBEDDING_PROVIDER=gemini` + `GEMINI_API_KEY`: NL search, describe and Q&A work end-to-end; the JSON schemas are accepted by the API (incl. nullable enums); Cosmos shows token, thinking and cached-token counts.
 
 ## Phase 3a — Description generator (FR-4)
+- [x] **T3a.7 · Improve my text** 🤖 — FR-4.4 · done 2026-10-04: prompt `improve.v1`, `POST /ai/improve` (agent, flag `ai_improve`, number + fair-housing post-checks, one regeneration), editor panel. Todo: eval cases (with T3a.1).
 - [x] **T3a.2 · Fact sheet builder** — `listing /internal/listings/{id}/facts` (S1..Sn, no contact/address).
 - [x] **T3a.3 · Prompt `describe.v1` + feature** 🤖 — structured output, post-checks, one regeneration, warnings.
 - [x] **T3a.4 · `POST /api/v1/ai/describe`** — agent-only, owner check, flag, gateway rate limit.
@@ -86,7 +88,7 @@
 - [x] **T3b.5 · `POST /api/v1/search/nl` + cache + fallback** 🤖
 - [x] **T3b.6 · NL search UI** — NL box, removable chips (→ classic), assumptions, non-property hint.
 - [ ] **T3b.1 · Search eval set to 150 cases** 🤖 — current 12 · Est: M
-- [ ] **T3b.7 · Eval gate + weight tuning + `near` POIs** 🤖 — Deps: T3b.1 · Est: L — OSM POIs table in search service; gate passes with real Gemini.
+- [~] **T3b.7 · Eval gate + weight tuning + `near` POIs** 🤖 — Deps: T3b.1 · Est: L — `near` ranking done 2026-10-04 (bundled OSM-derived POI list, weight 0.10, ADR-0018). Todo: eval gate and weight tuning with real Gemini.
 
 ## Phase 3c — Documents + Q&A (FR-1.3, FR-5)
 - [x] **T3c.1 · Document upload** — PDF magic bytes, size/count limits, Blob, `listing.document_uploaded`.
@@ -96,7 +98,7 @@
 - [x] **T3c.6 · SSE endpoint + suggestions + feedback** — disconnect stops the stream.
 - [x] **T3c.7 · Q&A panel UI** — streaming, citations, suggestions, 👍/👎, "Ask the agent" prefill.
 - [ ] **T3c.3 · Q&A eval + red-team sets** 🤖 — 20 listings with PDFs, 100 cases, 30 red-team · Est: M
-- [~] **T3c.8 · Agent documents list UI + owner-only document download** — status list with live polling and Unpublish done in the editor. Todo: owner-only PDF download.
+- [x] **T3c.8 · Agent documents list UI + owner-only document download** — status list with live polling; owner-only download and delete (`listing.document_deleted` → ai drops chunks).
 - [ ] **T3c.9 · Q&A eval gate** 🤖 — Deps: T3c.3, T2.9 · Est: S
 - [ ] **T3c.10 · Isolation test** — integration test proving Q&A never retrieves another listing's chunks · Est: S
 - [ ] **T3c.11 · Chaos test** — NFR-2 · Est: S — stop the ai container: search falls back, listing pages and editor still work.
@@ -110,15 +112,18 @@
 - [x] **T4.6 · Favourites & saved searches** — API (engagement) + UI: Save on cards and listing page, Save this search, `/me/saved` page.
 - [x] **T4.19 · People admin + account page** — `GET /admin/users`, `/admin` page (roles, agent verification, key rotation), `/account` page (sign out of all devices).
 - [x] **T4.20 · API sync check** — `scripts/check_api_sync.py`: backend ↔ gateway ↔ frontend; wire into CI with T0.8.
-- [ ] **T4.3 · Admin moderation** — FR-7.1 · Est: M
-- [ ] **T4.4 · Admin AI dashboard** 🤖 — FR-7.2/7.3 · Est: L — Cosmos queries/change feed → charts; negative-feedback export as eval cases.
-- [ ] **T4.5 · Runtime feature flags** — FR-7.4 · Est: S (Azure App Configuration or Redis)
-- [ ] **T4.7 · Account deletion & retention jobs** — FR-6.4, NFR-10 · Est: M (Container Apps jobs)
+- [x] **T4.21 · Sign-in methods** — FR-6.1 · done 2026-10-04 (ADR-0017): email magic link (fragment token, single use) sent with the code; Google ID-token sign-in when `GOOGLE_CLIENT_ID` is set. Todo: real Google client id per environment.
+- [x] **T4.22 · Q&A and privacy details** — FR-5.2, FR-5.6, §7 · done 2026-10-04: clickable citations show the field value or document passage and jump to the fact; optional comment on 👍/👎; "AI answers can be incomplete — verify with the agent." in the panel; `/privacy` notice; consent checkbox on enquiries.
+- [x] **T4.3 · Admin moderation** — FR-7.1 · done 2026-10-04: listing takedown/restore and account suspend/reinstate, reason required and logged (`moderation_actions`, `admin_actions`); suspension hides the agent's live listings via `identity.user_suspended`; Admin → Listings / People tabs with history.
+- [x] **T4.4 · Admin AI dashboard** 🤖 — FR-7.2/7.3 · done 2026-10-04: per feature per day requests, tokens, cost, p50/p95 latency, error rate, 👍/👎 (aggregated in Python over the 30-day log; switch to the change feed if volume grows); 👎 review and JSONL export as eval candidates. Todo: 👍/👎 comment is optional in the Q&A panel; describe/improve have no rating UI yet.
+- [x] **T4.5 · Runtime feature flags** — FR-7.4 · done 2026-10-04 (ADR-0019): Redis hash, config defaults, 5 s cache; Admin → AI toggles; `GET /ai/features` hides disabled UI.
+- [~] **T4.7 · Account deletion & retention jobs** — FR-6.4, NFR-10 · done 2026-10-04: `DELETE /me` scrubs at once and emits `identity.user_deleted` (listing archives, engagement erases favourites/saved searches/enquiry contact details, ai unlinks logs); purge after 30 days; enquiries deleted after 2 years; enquiry consent recorded. Todo: the purge and retention loops run inside identity/engagement — move them to Container Apps jobs with T4.12.
 - [ ] **T4.8 · Security review** — docs/security.md · Est: L
-- [ ] **T4.9 · Load & a11y tests** — NFR-6/8/9 · Est: M
-- [ ] **T4.10 · Alerts, runbook drill, backup restore drill** · Est: M
+- [x] **T4.9 · Load & a11y tests** — NFR-6/8/9/11 · done 2026-10-04: k6 (T1.15); Playwright + axe (WCAG 2.1 A/AA) on home, search + filters, listing + Q&A, login, privacy; journeys J1, chips, filters/sort in URL, map pins, listing facts; matrix Chromium, Firefox, WebKit, Pixel 7, iPhone 14 (+ Edge with `E2E_EDGE=1`) — 57 passed, 3 skipped (keyboard test on mobile Chrome, mobile Safari and desktop Safari); maps degrade gracefully without WebGL (resilience.spec.ts). In CI after the smoke test. Todo: Lighthouse LCP on 4G against staging; manual screen-reader pass.
+- [~] **T4.10 · Alerts, runbook drill, backup restore drill** · Est: M — alerts and availability tests as code (monitoring.bicep, NFR-1 99.5 % error budget), runbook §6–6c. Todo: the drills, once Azure exists.
 - [ ] **T4.11 · SEO for listing pages** — ADR-0009 · Est: M — pre-render or edge SSR for `/listings/:id`.
-- [ ] **T4.12 · Azure IaC** — architecture.md §7 · Est: L — Bicep/`azd`: Container Apps env + apps, Postgres Flexible (pgvector), Cosmos, Service Bus topics/subscriptions (mirror Config.json), Storage, Redis, Key Vault, managed identities, App Insights, Static Web Apps.
+- [x] **T4.12 · Azure IaC** — architecture.md §7 · done 2026-10-04: `infra/azure/` Bicep (compiles; CI builds it) — see azure-deployment.md §4a. Not yet deployed (needs a subscription). Todo: VNet + private endpoints, Front Door custom domain, OTel agent config, ACS Email.
+- [x] **T4.23 · Success metrics instrumentation** — requirements §9 · done 2026-10-04: anonymous product events (`POST /api/v1/events`, no user id/PII, Cosmos `product-events` TTL 90 d) for NL share, search→view CTR by mode, time-to-publish, AI-draft edit ratio, Q&A without agent contact; Admin → Success metrics with targets (+ 👍 ratio and 👎/1,000 answers from the AI log).
 - [ ] **T4.13 · Configurable guardrail terms & templates** — docs/ai/guardrails.md §4–5 · Est: S
 - [ ] **T4.14 · Signing keys in Key Vault / Entra External ID** — ADR-0015 · Est: L — move private keys out of Postgres (Key Vault) or switch to Entra; verifiers already use JWKS.
 - [ ] **T4.15 · Outbox cleanup job** — ADR-0016 · Est: S — delete outbox rows published more than 7 days ago (Container Apps job).
@@ -127,3 +132,5 @@
 
 ## Parking lot (ideas raised during work — not scheduled)
 - _Format: `- idea — raised in T#.# — why`._
+- Map pin clustering — raised in T4.9 — pins in the same locality overlap; hovered/focused pins come to the front, but clustering would read better at city zoom.
+- Self-host the map tiles (Planetiler → Blob + Front Door) — raised in T1.12 — OpenFreeMap has no SLA (ADR-0018).

@@ -19,6 +19,8 @@ const STATUS: Record<string, { label: string; className: string }> = {
   published: { label: "Live", className: "text-leaf" },
   draft: { label: "Draft", className: "text-slate" },
   unpublished: { label: "Hidden", className: "text-danger" },
+  removed: { label: "Taken down", className: "text-danger" },
+  suspended: { label: "Suspended", className: "text-danger" },
 };
 
 export default function AgentListings() {
@@ -43,10 +45,13 @@ export default function AgentListings() {
               <li key={l.id} className="flex flex-wrap items-center gap-x-6 gap-y-1 border-t border-rule py-4 last:border-b">
                 <div className="min-w-0 flex-1">
                   <Link to={`/agent/listings/${l.id}/edit`} className="block truncate text-lg font-semibold hover:underline">{l.title}</Link>
-                  <p className="text-slate">{l.locality}, {l.city}{l.documents_count ? `, ${l.documents_count} document${l.documents_count > 1 ? "s" : ""}` : ""}</p>
+                  <p className="text-slate">
+                    {l.locality}, {l.city}{l.documents_count ? `, ${l.documents_count} document${l.documents_count > 1 ? "s" : ""}` : ""}
+                    {l.description_ai && <span className="ml-2 rounded bg-haldi-wash px-1.5 text-xs font-semibold text-ink">AI-assisted</span>}
+                  </p>
                 </div>
                 <p className="w-24 text-lg font-bold tabular-nums">{l.price.display}</p>
-                <p className={`w-16 font-semibold ${status.className}`}>{status.label}</p>
+                <p className={`w-24 font-semibold ${status.className}`}>{status.label}</p>
                 <Link to={`/listings/${l.id}`} className="link text-sm">View</Link>
               </li>
             );

@@ -1,0 +1,22 @@
+# Debug overlay: every Python service runs under debugpy (no --reload), one debug port each (5701-5706).
+#   docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d identity listing search ai engagement notification
+# Back to normal: docker compose up -d identity listing search ai engagement notification
+services:
+  identity:
+    ports: ["5701:5678"]
+    command: sh -c "pip install --quiet debugpy && alembic upgrade head && python -m debugpy --listen 0.0.0.0:5678 -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
+  listing:
+    ports: ["5702:5678"]
+    command: sh -c "pip install --quiet debugpy && alembic upgrade head && python -m debugpy --listen 0.0.0.0:5678 -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
+  search:
+    ports: ["5703:5678"]
+    command: sh -c "pip install --quiet debugpy && alembic upgrade head && python -m debugpy --listen 0.0.0.0:5678 -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
+  ai:
+    ports: ["5704:5678"]
+    command: sh -c "pip install --quiet debugpy && alembic upgrade head && python -m debugpy --listen 0.0.0.0:5678 -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
+  engagement:
+    ports: ["5705:5678"]
+    command: sh -c "pip install --quiet debugpy && python -m debugpy --listen 0.0.0.0:5678 -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
+  notification:
+    ports: ["5706:5678"]
+    command: sh -c "pip install --quiet debugpy && python -m debugpy --listen 0.0.0.0:5678 -m app.main"

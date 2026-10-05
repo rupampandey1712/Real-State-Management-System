@@ -18,12 +18,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai_client import AIClient
 from app.config import settings
 from app.models import SearchListing, embedding_text
-from app.ranking import Filters, apply_filters, hybrid_search
+from app.ranking import RESULT_COLUMNS, Filters, apply_filters, hybrid_search, parse_bbox
 from estate_common import events
 from estate_common.app import create_app, postgres_check, redis_check
 from estate_common.cache import TwoLevelCache
 from estate_common.db import Database
 from estate_common.events import Event
+from estate_common.flags import FeatureFlags
 from estate_common.messaging import consume_forever
 
 log = structlog.get_logger(__name__)
@@ -32,6 +33,7 @@ ai = AIClient()
 cache = redis.from_url(settings.redis_url)
 # Classic filter search: L1 10 s, L2 60 s, versioned — any listing event bumps the version (clears it all).
 search_cache = TwoLevelCache(cache, "search", l1_ttl_s=10, l2_ttl_s=60)
+flags = FeatureFlags(cache, {"nl_search": settings.feature_nl_search})  # admins toggle it at runtime (FR-7.4)
 Session = Annotated[AsyncSession, Depends(db.session)]
 
 
@@ -90,6 +92,9 @@ class Money(BaseModel):
     amount_minor: int
     currency: str
     display: str
+
+
+Near = Literal["metro", "school", "hospital", "it_park", "mall", "railway_station", "airport"]
 
 
 class ResultItem(BaseModel):
@@ -166,6 +171,8 @@ async def classic_search(
     furnishing: str | None = None,
     pet_policy: str | None = None,
     amenities: Annotated[list[str] | None, Query()] = None,
+    near: Annotated[list[Near] | None, Query(description="Ranks homes closer to these places first")] = None,
+    bbox: str | None = Query(None, description="minLng,minLat,maxLng,maxLat — only homes on this part of the map"),
     sort: Literal["relevance", "price_asc", "price_desc", "newest"] = "newest",
     cursor: str | None = None,
     limit: int = Query(20, ge=1, le=50),
@@ -174,20 +181,30 @@ async def classic_search(
                 bedrooms_min=bedrooms_min, bedrooms_max=bedrooms_max,
                 price_min_minor=price_min * 100 if price_min else None,
                 price_max_minor=price_max * 100 if price_max else None,
-                furnishing=furnishing, pet_policy=pet_policy, amenities=amenities or [])
-    order = {
-        "price_asc": SearchListing.price_minor.asc(),
-        "price_desc": SearchListing.price_minor.desc(),
-    }.get(sort, SearchListing.published_at.desc())
+                furnishing=furnishing, pet_policy=pet_policy, amenities=amenities or [], near=near or [],
+                bbox=parse_bbox(bbox))
     offset = _decode_cursor(cursor)
 
     async def run_query() -> dict:
-        stmt = apply_filters(select(SearchListing), f).order_by(order, SearchListing.id).offset(offset).limit(limit + 1)
+        if sort == "relevance" or f.near:
+            # Relevance without a text query: filter fit (exact locality, within budget) + near + freshness.
+            results, has_more = await hybrid_search(session, f, None, None, offset, limit, sort)
+            return SearchResponse(
+                items=[_item(row, score, reasons) for row, score, reasons in results],
+                next_cursor=_encode_cursor(offset + limit) if has_more else None,
+                meta={"mode": "classic", "sort": sort},
+            ).model_dump(mode="json")
+        order = {
+            "price_asc": SearchListing.price_minor.asc(),
+            "price_desc": SearchListing.price_minor.desc(),
+        }.get(sort, SearchListing.published_at.desc())
+        stmt = (apply_filters(select(SearchListing).options(RESULT_COLUMNS), f)
+                .order_by(order, SearchListing.id).offset(offset).limit(limit + 1))
         rows = list(await session.scalars(stmt))
         return SearchResponse(
             items=[_item(r, 0.0, []) for r in rows[:limit]],
             next_cursor=_encode_cursor(offset + limit) if len(rows) > limit else None,
-            meta={"mode": "classic"},
+            meta={"mode": "classic", "sort": sort},
         ).model_dump(mode="json")
 
     key = json.dumps([f.__dict__, sort, offset, limit], sort_keys=True, default=str)
@@ -199,6 +216,8 @@ class NLSearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=300)
     cursor: str | None = None
     limit: int = Field(20, ge=1, le=50)
+    sort: Literal["relevance", "price_asc", "price_desc", "newest"] = "relevance"
+    bbox: str | None = Field(None, max_length=100, description="minLng,minLat,maxLng,maxLat")
 
 
 async def _parse_with_cache(query: str) -> tuple[dict | None, bool]:
@@ -233,7 +252,7 @@ async def _embed_query(query: str) -> list[float] | None:
 @app.post("/api/v1/search/nl")
 async def nl_search(body: NLSearchRequest, session: Session) -> SearchResponse:
     parsed, cached = None, False
-    if settings.feature_nl_search:
+    if await flags.is_enabled("nl_search"):
         (parsed, cached), vector = await asyncio.gather(_parse_with_cache(body.query), _embed_query(body.query))
     else:
         vector = await _embed_query(body.query)
@@ -251,9 +270,11 @@ async def nl_search(body: NLSearchRequest, session: Session) -> SearchResponse:
             price_min_minor=pf["price_min_inr"] * 100 if pf.get("price_min_inr") else None,
             price_max_minor=pf["price_max_inr"] * 100 if pf.get("price_max_inr") else None,
             furnishing=pf.get("furnishing"), pet_policy=pf.get("pet_policy"), amenities=pf.get("amenities") or [],
+            near=pf.get("near") or [],
         )
+    f.bbox = parse_bbox(body.bbox)
     offset = _decode_cursor(body.cursor)
-    results, has_more = await hybrid_search(session, f, vector, None if vector else body.query, offset, body.limit)
+    results, has_more = await hybrid_search(session, f, vector, None if vector else body.query, offset, body.limit, body.sort)
     return SearchResponse(
         items=[_item(row, score, reasons) for row, score, reasons in results],
         next_cursor=_encode_cursor(offset + body.limit) if has_more else None,

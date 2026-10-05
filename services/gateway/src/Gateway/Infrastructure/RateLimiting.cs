@@ -25,6 +25,7 @@ public static class RateLimitingExtensions
             ["describe"] = Rule(config, "Describe", 10, TimeSpan.FromMinutes(1)),
             ["enquiry"] = Rule(config, "Enquiry", 5, TimeSpan.FromHours(1)),
             ["auth"] = Rule(config, "Auth", 10, TimeSpan.FromMinutes(1)),
+            ["events"] = Rule(config, "Events", 120, TimeSpan.FromMinutes(1)),
         };
         var global = Rule(config, "GlobalPerIp", 600, TimeSpan.FromMinutes(1));
 

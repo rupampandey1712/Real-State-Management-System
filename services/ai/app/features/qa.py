@@ -71,6 +71,14 @@ def clean_history(history: list[dict]) -> list[dict]:
     return turns
 
 
+EXCERPT_CHARS = 400
+
+
+def _excerpt(content: str) -> str:
+    text = " ".join(content.split())
+    return text if len(text) <= EXCERPT_CHARS else text[:EXCERPT_CHARS].rsplit(" ", 1)[0] + " …"
+
+
 def _sse(event: str, data: dict) -> dict:
     return {"event": event, "data": json.dumps(data, ensure_ascii=False)}
 
@@ -98,8 +106,10 @@ async def answer(db: Database, facts_payload: dict, question: str, history: list
         yield _sse("error", {"code": "ai_unavailable", "message": UNAVAILABLE_TEMPLATE})
         return
 
-    sources = {f["id"]: {"id": f["id"], "type": "listing_field", "label": f["label"]} for f in facts}
-    sources |= {d["id"]: {"id": d["id"], "type": "document", "label": f"{d['filename']}, p.{d['pages']}"} for d in documents}
+    # FR-5.2: citations are clickable — a field shows its value, a document shows the passage it came from.
+    sources = {f["id"]: {"id": f["id"], "type": "listing_field", "label": f["label"], "excerpt": f["value"]} for f in facts}
+    sources |= {d["id"]: {"id": d["id"], "type": "document", "label": f"{d['filename']}, p.{d['pages']}",
+                          "excerpt": _excerpt(d["content"])} for d in documents}
     invalid = guardrails.invalid_citations(result.text, set(sources))
     cited = [sources[c] for c in guardrails.citations_in(result.text) if c in sources]
 

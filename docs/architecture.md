@@ -42,11 +42,11 @@
 | Service | Port (local) | Responsibility | Owns data | Talks to | Code |
 |---|---|---|---|---|---|
 | **gateway** | 8080 | **YARP on .NET 10** (ADR-0014): route table with per-route auth, rate-limit, output-cache and timeout policies; JWT (RS256/JWKS) + revocation at the edge; Redis sliding-window limits per user/IP; Redis output cache; Polly retries + circuit breakers; active/passive health checks; error envelope; blocks `/internal/*`; streams SSE | rate-limit counters, output cache | all HTTP services | `services/gateway` (C#) |
-| **identity** | 8001 | Email OTP sign-in, JWT issue, roles, admin role changes | `users` (Postgres `identity`), OTP (Redis) | Mailpit/ACS | `services/identity` |
-| **listing** | 8002 | Listing aggregate: CRUD, status transitions, image processing, document upload, fact sheet | `listings`, `listing_images`, `listing_documents` (Postgres `listing`), media (Blob) | Service Bus, identity (seed) | `services/listing` |
-| **search** | 8003 | Search read model (projection), classic filters, NL hybrid search, query cache | `search_listings` + vectors (Postgres `search`), Redis cache | ai (parse, embed) | `services/search` |
-| **ai** | 8004 | **Only** caller of the Gemini API (generation + embeddings); prompts, guardrails, describe, Q&A (RAG), document ingestion, AI telemetry & feedback | `document_chunks` + vectors (Postgres `ai`), `ai-requests` (Cosmos) | Gemini API, listing (facts), Blob | `services/ai` |
-| **engagement** | 8005 | Enquiries, favourites, saved searches | Cosmos containers `enquiries`, `favourites`, `saved-searches` | listing (summary), Service Bus | `services/engagement` |
+| **identity** | 8001 | Sign-in (email code, magic link, Google — ADR-0017), JWT issue, roles, agent applications, suspension, account deletion + 30-day purge, admin audit log | `users`, `admin_actions`, `outbox` (Postgres `identity`), OTP + magic tokens (Redis) | Mailpit/ACS, Google JWKS, Service Bus | `services/identity` |
+| **listing** | 8002 | Listing aggregate: CRUD, status transitions (incl. archive, admin takedown/restore, suspension), duplicate, image processing + reorder, document upload/download/delete, publish checks, fact sheet | `listings`, `listing_images`, `listing_documents`, `moderation_actions` (Postgres `listing`), media (Blob) | Service Bus, identity (seed), ai (fair-housing check) | `services/listing` |
+| **search** | 8003 | Search read model (projection), classic filters + sort + map area (`bbox`), NL hybrid search with `near` POIs (ADR-0018), query cache | `search_listings` + vectors (Postgres `search`), POI list (bundled CSV), Redis cache | ai (parse, embed) | `services/search` |
+| **ai** | 8004 | **Only** caller of the Gemini API (generation + embeddings); prompts, guardrails (also `/internal/guardrails/listing-text` for listing), describe, improve, Q&A (RAG), document ingestion, AI telemetry & feedback, admin AI dashboard, runtime flags (ADR-0019) | `document_chunks` + vectors (Postgres `ai`), `ai-requests` (Cosmos) | Gemini API, listing (facts), Blob | `services/ai` |
+| **engagement** | 8005 | Enquiries (with consent), favourites, saved searches; erasure on account deletion; 2-year enquiry retention | Cosmos containers `enquiries`, `favourites`, `saved-searches` | listing (summary), Service Bus | `services/engagement` |
 | **notification** | — | Worker: emails agents on new enquiries | none | identity, engagement (internal), SMTP | `services/notification` |
 | **web** | 3000 (nginx) / 5173 (vite dev) | React SPA | browser storage only | gateway | `web/` |
 
@@ -57,7 +57,7 @@ event envelope, Service Bus helpers, OpenTelemetry, DB helpers. No domain logic.
 
 | Store | Database / container | Owner | Notes |
 |---|---|---|---|
-| PostgreSQL | `identity` | identity | users, roles |
+| PostgreSQL | `identity` | identity | users, roles, agent applications, admin audit log, outbox |
 | PostgreSQL | `listing` | listing | source of truth for listings |
 | PostgreSQL + pgvector | `search` | search | **projection** — rebuildable from events (`listing` re-publish) |
 | PostgreSQL + pgvector | `ai` | ai | document chunks — rebuildable from PDFs in Blob |
@@ -65,7 +65,7 @@ event envelope, Service Bus helpers, OpenTelemetry, DB helpers. No domain logic.
 | Cosmos DB | `estateai/enquiries` (pk `/agentId`) | engagement | |
 | Cosmos DB | `estateai/favourites`, `saved-searches` (pk `/userId`) | engagement | |
 | Cosmos DB | `estateai/ai-requests` (pk `/feature`, TTL 30 d) | ai | tokens, cost, latency, status, feedback |
-| Redis | db 0 | gateway (rate limits), identity (OTP), search (NL cache) | keys prefixed per owner: `rl:`, `otp:`, `nl:` |
+| Redis | db 0 | gateway (rate limits), identity (OTP, magic links), search (NL cache), all (revocation, `feature_flags` hash — written by ai admin API) | keys prefixed per owner: `rl:`, `otp:`, `magic:`, `nl:`, `jwt:`, `feature_flags` |
 
 Rule: a service never reads another service's store. It calls an `/internal/*` endpoint or consumes events.
 
@@ -80,8 +80,12 @@ Delivery is at-least-once; every handler is idempotent.
 | `listing-events` | `listing.updated` | listing | `search` | listing snapshot | upsert + re-embed |
 | `listing-events` | `listing.unpublished` | listing | `search` | listing snapshot | delete from read model |
 | `listing-events` | `listing.document_uploaded` | listing | `ai` | `document_id, listing_id, storage_key, filename, kind` | extract → chunk → embed → store |
+| `listing-events` | `listing.document_deleted` | listing | `ai` | `document_id, listing_id` | delete that document's chunks |
 | `ai-events` | `ai.document_processed` | ai | `listing` | `document_id, listing_id, status, error` | update document status |
 | `engagement-events` | `engagement.enquiry_created` | engagement | `notification` | `enquiry_id, agent_id, listing_id` (ids only) | fetch details, email agent |
+| `identity-events` | `identity.user_suspended` | identity | `listing` | `user_id` | live listings → `suspended` (hidden) |
+| `identity-events` | `identity.user_reinstated` | identity | `listing` | `user_id` | `suspended` listings → `published` |
+| `identity-events` | `identity.user_deleted` | identity | `listing`, `engagement`, `ai` | `user_id` | listing: archive all; engagement: delete favourites/saved searches, scrub sent enquiries, delete received ones; ai: unlink AI logs |
 
 Topology is declared in `infra/local/servicebus/Config.json` (emulator) and must be mirrored in
 Azure IaC (task T4.12). Adding a consumer = new subscription; producers don't change.

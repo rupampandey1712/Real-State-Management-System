@@ -14,7 +14,8 @@ class Listing(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     agent_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
-    status: Mapped[str] = mapped_column(String(12), default="draft", index=True)  # draft|published|unpublished|archived
+    # draft | published | unpublished | archived | removed (admin takedown) | suspended (agent suspended)
+    status: Mapped[str] = mapped_column(String(12), default="draft", index=True)
     listing_type: Mapped[str] = mapped_column(String(4))  # sale | rent
     property_type: Mapped[str] = mapped_column(String(20))
     title: Mapped[str] = mapped_column(String(120))
@@ -36,7 +37,8 @@ class Listing(Base):
     parking_covered: Mapped[int] = mapped_column(SmallInteger, default=0)
     parking_open: Mapped[int] = mapped_column(SmallInteger, default=0)
     pet_policy: Mapped[str] = mapped_column(String(12), default="unknown")
-    possession: Mapped[str | None] = mapped_column(String(20))  # 'ready_to_move' or ISO date
+    possession: Mapped[str | None] = mapped_column(String(20))  # 'ready_to_move' | 'under_construction' | ISO date
+    property_age_years: Mapped[int | None] = mapped_column(SmallInteger)
     amenities: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
     address_line: Mapped[str] = mapped_column(String(200))
     locality: Mapped[str] = mapped_column(String(80), index=True)
@@ -81,3 +83,16 @@ class ListingDocument(Base):
     error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     listing: Mapped[Listing] = relationship(back_populates="documents")
+
+
+class ModerationAction(Base):
+    """Audit log of admin moderation (FR-7.1). Append-only; the reason is required."""
+
+    __tablename__ = "moderation_actions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    listing_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("listings.id", ondelete="CASCADE"), index=True)
+    admin_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    action: Mapped[str] = mapped_column(String(12))  # takedown | restore
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

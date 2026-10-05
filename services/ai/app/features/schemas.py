@@ -47,3 +47,7 @@ class DescribeOutput(BaseModel):
     title: str = Field(description="At most 80 characters")
     description: str
     highlights: list[str] = Field(description="3 to 6 short factual phrases")
+
+
+class ImproveOutput(BaseModel):
+    description: str

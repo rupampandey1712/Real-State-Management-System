@@ -1,0 +1,51 @@
+type,name,city,lat,lng
+metro,Vanaz,Pune,18.5074,73.8053
+metro,Ideal Colony,Pune,18.5076,73.8189
+metro,Civil Court,Pune,18.5287,73.8550
+metro,Pune Railway Station,Pune,18.5293,73.8740
+metro,Ruby Hall Clinic,Pune,18.5333,73.8784
+metro,Yerawada,Pune,18.5480,73.8880
+metro,Kalyani Nagar,Pune,18.5480,73.9020
+metro,Ramwadi,Pune,18.5560,73.9110
+metro,Swargate,Pune,18.5018,73.8636
+metro,PCMC,Pune,18.6298,73.8000
+metro,Shivaji Nagar,Pune,18.5314,73.8446
+railway_station,Pune Junction,Pune,18.5289,73.8743
+railway_station,Shivajinagar,Pune,18.5325,73.8497
+it_park,EON IT Park Kharadi,Pune,18.5521,73.9440
+it_park,Rajiv Gandhi Infotech Park Hinjewadi,Pune,18.5913,73.7389
+it_park,Magarpatta City,Pune,18.5146,73.9264
+airport,Pune Airport,Pune,18.5822,73.9197
+mall,Phoenix Marketcity Pune,Pune,18.5622,73.9167
+hospital,Ruby Hall Clinic,Pune,18.5330,73.8766
+metro,Indiranagar,Bengaluru,12.9784,77.6386
+metro,MG Road,Bengaluru,12.9755,77.6067
+metro,Baiyappanahalli,Bengaluru,12.9908,77.6527
+metro,Whitefield (Kadugodi),Bengaluru,12.9957,77.7578
+metro,Hopefarm Channasandra,Bengaluru,12.9876,77.7543
+metro,Kundalahalli,Bengaluru,12.9773,77.7155
+metro,HSR Layout,Bengaluru,12.9165,77.6230
+metro,Majestic,Bengaluru,12.9757,77.5728
+railway_station,KSR Bengaluru City,Bengaluru,12.9781,77.5695
+railway_station,Hebbal,Bengaluru,13.0405,77.5891
+it_park,International Tech Park Bangalore (ITPL),Bengaluru,12.9860,77.7300
+it_park,Manyata Tech Park,Bengaluru,13.0475,77.6205
+it_park,Embassy Golf Links,Bengaluru,12.9545,77.6470
+airport,Kempegowda International Airport,Bengaluru,13.1986,77.7066
+mall,Forum South Bengaluru,Bengaluru,12.9343,77.6112
+hospital,Manipal Hospital Old Airport Road,Bengaluru,12.9592,77.6489
+metro,Andheri,Mumbai,19.1197,72.8464
+metro,Azad Nagar,Mumbai,19.1287,72.8399
+metro,Ghatkopar,Mumbai,19.0860,72.9081
+metro,Marol Naka,Mumbai,19.1079,72.8796
+metro,Goregaon East (Line 7),Mumbai,19.1660,72.8590
+metro,Bandra Kurla Complex,Mumbai,19.0650,72.8650
+railway_station,Andheri,Mumbai,19.1190,72.8467
+railway_station,Bandra,Mumbai,19.0544,72.8402
+railway_station,Goregaon,Mumbai,19.1646,72.8493
+railway_station,Thane,Mumbai,19.1860,72.9750
+it_park,Hiranandani Business Park Powai,Mumbai,19.1180,72.9100
+it_park,Mindspace Malad,Mumbai,19.1850,72.8360
+airport,Mumbai Airport (T2),Mumbai,19.0974,72.8745
+mall,Viviana Mall Thane,Mumbai,19.2087,72.9720
+hospital,Hiranandani Hospital Powai,Mumbai,19.1190,72.9130

@@ -45,6 +45,7 @@ class SearchListing(Base):
         Index("ix_search_filters", "city", "listing_type", "bedrooms", "price_minor"),
         Index("ix_search_fts", "search_text", postgresql_using="gin"),
         Index("ix_search_amenities", "amenities", postgresql_using="gin"),
+        Index("ix_search_geo", "lat", "lng"),
         Index(
             "ix_search_embedding", "embedding", postgresql_using="hnsw",
             postgresql_ops={"embedding": "vector_cosine_ops"},

@@ -27,6 +27,9 @@ Short records of significant, hard-to-reverse decisions. One file per decision: 
 | [0014](0014-yarp-api-gateway.md) | YARP (.NET 10) as the API gateway | Accepted | 2026-09-27 |
 | [0015](0015-token-lifecycle.md) | Token lifecycle: RS256 + JWKS, rotating refresh tokens, revocation | Accepted | 2026-09-27 |
 | [0016](0016-outbox-and-resilience.md) | Transactional outbox, idempotency and resilience patterns | Accepted | 2026-09-27 |
+| [0017](0017-sign-in-methods.md) | Sign-in methods: email magic link and Google, alongside the email code | Accepted | 2026-10-04 |
+| [0018](0018-maps-maplibre-openfreemap.md) | Maps: MapLibre GL JS + OpenFreeMap tiles; `near` POIs from a bundled OSM-derived list | Accepted | 2026-10-04 |
+| [0019](0019-runtime-feature-flags.md) | Runtime feature flags in Redis | Accepted | 2026-10-04 |
 
 ## Template
 ```markdown

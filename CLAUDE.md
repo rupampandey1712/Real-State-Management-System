@@ -79,7 +79,7 @@ npm run typecheck && npm run build
 
 # CI (.github/workflows/ci.yml) runs all of the checks below on every push and pull request
 
-# End-to-end against the running stack (29 checks through the gateway)
+# End-to-end against the running stack (31 checks through the gateway)
 python scripts/smoke_test.py
 
 # Frontend ↔ backend ↔ gateway contract (run after any API or UI change; exits 1 if out of sync)

@@ -21,6 +21,7 @@ class AISettings(CommonSettings):
     ai_prompt_version_nl_search: int = 1
     ai_prompt_version_describe: int = 1
     ai_prompt_version_qa: int = 1
+    ai_prompt_version_improve: int = 1
 
     # Embeddings (ADR-0003)
     embedding_provider: str = "fake"  # fake | gemini (uses GEMINI_API_KEY)
@@ -38,7 +39,9 @@ class AISettings(CommonSettings):
     qa_min_similarity: float = 0.3
     qa_max_history_turns: int = 6
 
+    # Defaults for the runtime flags (estate_common.flags); admins override them on the AI dashboard.
     feature_ai_describe: bool = True
+    feature_ai_improve: bool = True
     feature_listing_qa: bool = True
 
     def model_for(self, config_key: str) -> str:

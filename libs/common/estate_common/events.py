@@ -14,14 +14,20 @@ from pydantic import BaseModel, Field
 LISTING_EVENTS = "listing-events"
 AI_EVENTS = "ai-events"
 ENGAGEMENT_EVENTS = "engagement-events"
+IDENTITY_EVENTS = "identity-events"
 
 # Event types
 LISTING_PUBLISHED = "listing.published"
 LISTING_UPDATED = "listing.updated"
 LISTING_UNPUBLISHED = "listing.unpublished"
 LISTING_DOCUMENT_UPLOADED = "listing.document_uploaded"
+LISTING_DOCUMENT_DELETED = "listing.document_deleted"
 DOCUMENT_PROCESSED = "ai.document_processed"
 ENQUIRY_CREATED = "engagement.enquiry_created"
+# Account lifecycle (FR-6.4, FR-7.1). Payload: {"user_id"} only — never email, name or phone.
+USER_SUSPENDED = "identity.user_suspended"
+USER_REINSTATED = "identity.user_reinstated"
+USER_DELETED = "identity.user_deleted"
 
 
 class Event(BaseModel):

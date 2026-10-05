@@ -148,10 +148,47 @@ public sealed class GatewayTests(GatewayFixture fx) : IClassFixture<GatewayFixtu
     [Theory]
     [InlineData("/api/v1/admin/users")]
     [InlineData("/api/v1/admin/keys/rotate")]
+    [InlineData("/api/v1/admin/users/abc/suspend")]
+    [InlineData("/api/v1/admin/listings/abc/takedown")]
+    [InlineData("/api/v1/admin/ai/flags")]
+    [InlineData("/api/v1/admin/product-metrics")]
     public async Task Admin_routes_exist_and_require_admin(string path)
     {
         var r = await Client(fx.Token("agent")).PostAsync(path, new StringContent("{}"));
         Assert.Equal(HttpStatusCode.Forbidden, r.StatusCode); // 403, not 404: the route is mapped
+    }
+
+    [Theory]
+    [InlineData("POST", "/api/v1/ai/improve")]
+    [InlineData("GET", "/api/v1/listings/abc/documents/def/file")]
+    public async Task New_agent_routes_require_an_agent(string method, string path)
+    {
+        var r = await Client(fx.Token("buyer")).SendAsync(new HttpRequestMessage(new HttpMethod(method), path) { Content = new StringContent("{}") });
+        Assert.Equal(HttpStatusCode.Forbidden, r.StatusCode);
+    }
+
+    [Fact]
+    public async Task Product_events_are_anonymous_and_routed_to_engagement()
+    {
+        var r = await Client().PostAsync("/api/v1/events", new StringContent("{}"));
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, r.StatusCode); // no auth needed; engagement is down in tests
+    }
+
+    [Fact]
+    public async Task Agent_request_requires_sign_in()
+    {
+        var r = await Client().PostAsync("/api/v1/me/agent-request", new StringContent("{}"));
+        Assert.Equal(HttpStatusCode.Unauthorized, r.StatusCode);
+    }
+
+    [Fact]
+    public async Task Map_area_searches_are_cached_per_box()
+    {
+        var before = fx.SearchHits;
+        var c = Client();
+        await c.GetAsync("/api/v1/search?bbox=73.7,18.4,74.0,18.7");
+        await c.GetAsync("/api/v1/search?bbox=73.8,18.4,74.0,18.7");
+        Assert.Equal(before + 2, fx.SearchHits); // a different box is a different cache entry
     }
 
     [Fact]

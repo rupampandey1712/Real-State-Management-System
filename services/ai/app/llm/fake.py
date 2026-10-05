@@ -6,7 +6,7 @@ import time
 from collections.abc import AsyncIterator
 
 from app.features import rules
-from app.features.schemas import DescribeOutput, SearchFilters
+from app.features.schemas import DescribeOutput, ImproveOutput, SearchFilters
 from app.llm.base import CallContext, Parsed, StreamResult, T
 from app.prompts.loader import RenderedPrompt
 from app.telemetry_store import AIRequestLog, ai_log
@@ -27,6 +27,8 @@ class FakeLLMClient:
             output = rules.parse_query(prompt.variables["query"])
         elif output_model is DescribeOutput:
             output = self._describe(prompt.variables)
+        elif output_model is ImproveOutput:
+            output = ImproveOutput(description=f"[Offline rewrite — AI_FAKE=true] {prompt.variables['draft']}")
         else:
             raise NotImplementedError(f"No fake for {output_model.__name__}")
         await ai_log.finish(entry, started, status="ok", response=output.model_dump())

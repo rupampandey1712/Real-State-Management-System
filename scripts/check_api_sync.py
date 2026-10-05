@@ -20,8 +20,8 @@ BACKEND_ONLY = {
 }
 
 BACKEND_ROUTE = re.compile(r'@app\.(get|post|put|patch|delete)\(\s*"(/api/v1/[^"]+)"')
-# api("/x"), post<T>(`/x/${id}`), postSSE(...), fetch("/api/v1/x") — first argument only
-FRONTEND_CALL = re.compile(r'\b(api|post|patch|postSSE)(?:<[^>()]*>)?\(\s*[`"](/[^`"]+)[`"]|fetch\(\s*[`"]/api/v1(/[^`"]+)[`"]')
+# api("/x"), post<T>(`/x/${id}`), put/del/download(...), postSSE(...), fetch("/api/v1/x") — first argument only
+FRONTEND_CALL = re.compile(r'\b(api|post|patch|put|del|download|postSSE)(?:<[^>()]*>)?\(\s*[`"](/[^`"]+)[`"]|fetch\(\s*[`"]/api/v1(/[^`"]+)[`"]')
 METHOD_OPTION = re.compile(r'method:\s*"(GET|POST|PUT|PATCH|DELETE)"')
 # api(`/me/favourites/${id}`, { method: saved ? "DELETE" : "PUT" }) — a ternary covers both methods
 TERNARY_METHOD = re.compile(r'method:\s*[^,}]*\?\s*"(\w+)"\s*:\s*"(\w+)"')
@@ -58,7 +58,7 @@ def frontend_calls() -> set[tuple[str, str]]:
             elif fetch_path:
                 methods = {"POST"} if "POST" in tail[:80] else {"GET"}
             else:
-                methods = {{"api": "GET", "post": "POST", "patch": "PATCH", "postSSE": "POST"}[fn]}
+                methods = {{"api": "GET", "post": "POST", "patch": "PATCH", "put": "PUT", "del": "DELETE", "download": "GET", "postSSE": "POST"}[fn]}
             base = normalise(path)
             # `/listings/${id}/${kind}` stands for several concrete endpoints
             if base == "/api/v1/listings/{}/{}":

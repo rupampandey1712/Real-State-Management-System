@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
+import GoogleButton from "../components/GoogleButton";
 import { useAuth } from "../lib/auth";
 
 export default function Login() {
-  const { requestCode, verifyCode } = useAuth();
+  const { requestCode, verifyCode, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -46,7 +47,7 @@ export default function Login() {
     <div className="mx-auto max-w-md space-y-8 pt-8">
       <div className="space-y-2">
         <h1 className="text-title font-extrabold tracking-tight">Sign in</h1>
-        <p className="text-slate">No password. We'll email you a 6-digit code.</p>
+        <p className="text-slate">No password. We'll email you a sign-in link and a 6-digit code — use either.</p>
       </div>
 
       {step === "email" ? (
@@ -54,12 +55,18 @@ export default function Login() {
           <label className="field-label">Email
             <input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} className="field mt-1 text-lg" />
           </label>
-          <button disabled={busy} className="btn-primary w-full">{busy ? "Sending…" : "Email me a code"}</button>
+          <button disabled={busy} className="btn-primary w-full">{busy ? "Sending…" : "Email me a sign-in link"}</button>
           <p className="text-sm text-slate">Local test accounts: agent@example.com and admin@example.com.</p>
+          <GoogleButton onCredential={(credential) => {
+            setError(null);
+            signInWithGoogle(credential).then(() => navigate("/")).catch((e) => setError((e as Error).message));
+          }} />
+          <p className="text-sm text-slate">By signing in you agree to how we handle your details, described in our <Link to="/privacy" className="link text-sm">privacy notice</Link>.</p>
         </form>
       ) : (
         <form onSubmit={verify} className="space-y-4">
-          <label className="field-label">Code sent to {email}
+          <p className="text-slate">Open the link in the email we sent to <span className="font-semibold text-ink">{email}</span>, or type the code here.</p>
+          <label className="field-label">Code
             <input inputMode="numeric" autoComplete="one-time-code" required value={code} onChange={(e) => setCode(e.target.value)} maxLength={6}
               className="field mt-1 text-center text-3xl font-bold tracking-[0.4em] tabular-nums" />
           </label>

@@ -12,8 +12,19 @@ interface AuthState {
   loading: boolean;
   requestCode: (email: string) => Promise<{ dev_code?: string }>;
   verifyCode: (email: string, code: string) => Promise<void>;
+  verifyMagicLink: (token: string) => Promise<void>;
+  signInWithGoogle: (credential: string) => Promise<void>;
+  /** Re-reads the user after a change on the server (e.g. an agent application). */
+  reloadUser: () => Promise<void>;
+  /** Clears the session locally after the account was deleted. */
+  forget: () => void;
   signOut: () => Promise<void>;
   signOutEverywhere: () => Promise<void>;
+}
+
+interface SignedIn {
+  access_token: string;
+  user: User;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -32,10 +43,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const requestCode = useCallback((email: string) => post<{ dev_code?: string }>("/auth/otp/request", { email }), []);
 
-  const verifyCode = useCallback(async (email: string, code: string) => {
-    const result = await post<{ access_token: string; user: User }>("/auth/otp/verify", { email, code });
+  const complete = useCallback(async (request: Promise<SignedIn>) => {
+    const result = await request;
     setAccessToken(result.access_token);
     setUser(result.user);
+  }, []);
+  const verifyCode = useCallback((email: string, code: string) => complete(post<SignedIn>("/auth/otp/verify", { email, code })), [complete]);
+  const verifyMagicLink = useCallback((token: string) => complete(post<SignedIn>("/auth/magic/verify", { token })), [complete]);
+  const signInWithGoogle = useCallback((credential: string) => complete(post<SignedIn>("/auth/google", { credential })), [complete]);
+  const reloadUser = useCallback(async () => {
+    // A role change cuts off old tokens, so refresh first to get one carrying the new role.
+    if (await refreshSession()) setUser(await api<User>("/me"));
+  }, []);
+  const forget = useCallback(() => {
+    setAccessToken(null);
+    setUser(null);
   }, []);
 
   const signOut = useCallback(async () => {
@@ -53,7 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, requestCode, verifyCode, signOut, signOutEverywhere }}>
+    <AuthContext.Provider value={{ user, loading, requestCode, verifyCode, verifyMagicLink, signInWithGoogle, reloadUser, forget, signOut, signOutEverywhere }}>
       {children}
     </AuthContext.Provider>
   );

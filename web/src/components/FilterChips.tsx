@@ -13,7 +13,7 @@ interface Token {
   text: string;
   /** Plain text before the token, e.g. the comma in "in Kharadi, Pune". */
   prefix?: string;
-  /** Classic-search param this token maps to; tokens without one (near, feel) are dropped on edit. */
+  /** Classic-search param this token maps to; tokens without one (the "feel" words) are dropped on edit. */
   param?: [string, string];
 }
 
@@ -45,21 +45,33 @@ function sentence(f: InterpretedFilters): { before: Token[]; noun: Token; after:
   else if (f.price_min_inr) after.push({ key: "price", text: `over ${formatInr(f.price_min_inr)}`, param: ["price_min", String(f.price_min_inr)] });
   if (f.pet_policy) after.push({ key: "pets", text: "where pets are allowed", param: ["pet_policy", f.pet_policy] });
   if (f.amenities.length) after.push({ key: "amenities", text: `with ${f.amenities.map((a) => a.replace(/_/g, " ")).join(" and ")}` });
-  f.near.forEach((n) => after.push({ key: `near:${n}`, text: `near ${n === "it_park" ? "an IT park" : `a ${n.replace("_", " ")}`}` }));
+  f.near.forEach((n) => after.push({ key: `near:${n}`, text: `near ${n === "it_park" ? "an IT park" : `a ${n.replace("_", " ")}`}`, param: ["near", n] }));
   if (f.soft_preferences.length) after.push({ key: "feel", text: `that feel ${f.soft_preferences.map((p) => `“${p}”`).join(", ")}` });
   return { before, noun, after };
 }
 
-/** What the AI understood, as an editable sentence. Removing a part re-runs a plain filter search (no AI call). */
-export default function FilterChips({ filters, count }: { filters: InterpretedFilters; count: number }) {
+/** The AI's interpretation as classic-search params, so it can be edited without another AI call (FR-3.2). */
+export function filtersToParams(filters: InterpretedFilters, skip?: string): URLSearchParams {
+  const { before, noun, after } = sentence(filters);
+  const params = new URLSearchParams();
+  [...before, noun, ...after].filter((t) => t.key !== skip && t.param).forEach((t) => params.append(t.param![0], t.param![1]));
+  if (filters.bedrooms_max !== null && skip !== "bhk") params.set("bedrooms_max", String(filters.bedrooms_max));
+  if (filters.price_min_inr && filters.price_max_inr && skip !== "price") params.set("price_min", String(filters.price_min_inr));
+  if (skip !== "amenities") filters.amenities.forEach((a) => params.append("amenities", a));
+  return params;
+}
+
+/** What the AI understood, as an editable sentence. Removing a part, or editing it in the filter panel,
+ *  re-runs a plain filter search — no AI call (FR-3.2). */
+export default function FilterChips({ filters, count, keep, onEdit }: {
+  filters: InterpretedFilters; count: number; keep?: URLSearchParams; onEdit?: () => void;
+}) {
   const navigate = useNavigate();
   const { before, noun, after } = sentence(filters);
-  const all = [...before, noun, ...after];
 
   const remove = (removed: Token) => {
-    const params = new URLSearchParams();
-    all.filter((t) => t.key !== removed.key && t.param).forEach((t) => params.append(t.param![0], t.param![1]));
-    if (removed.key !== "amenities") filters.amenities.forEach((a) => params.append("amenities", a));
+    const params = filtersToParams(filters, removed.key);
+    keep?.forEach((value, key) => params.set(key, value));
     navigate(`/search?${params.toString()}`);
   };
 
@@ -86,6 +98,12 @@ export default function FilterChips({ filters, count }: { filters: InterpretedFi
       {before.map(renderToken)}
       {noun.param ? renderToken(noun) : <span className="font-semibold text-ink"> {noun.text}</span>}
       {after.map(renderToken)}
+      {onEdit && (
+        <>
+          {" "}
+          <button type="button" onClick={onEdit} className="link align-baseline text-base">Edit filters</button>
+        </>
+      )}
     </p>
   );
 }

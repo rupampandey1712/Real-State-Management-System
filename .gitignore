@@ -27,3 +27,7 @@ Thumbs.db
 bin/
 obj/
 TestResults/
+
+# playwright
+web/test-results/
+web/playwright-report/
